@@ -29,14 +29,21 @@ def test_subtract_intervals_no_overlap():
 
 def test_split_into_slots_basic():
     windows = [(time(9, 0), time(11, 0))]
-    slots = split_into_slots(windows, duration_minutes=60, buffer_after_minutes=0)
+    slots = split_into_slots(windows, duration_minutes=60, buffer_before_minutes=0, buffer_after_minutes=0)
     assert slots == [time(9, 0), time(10, 0)]
 
 
-def test_split_respects_buffer():
+def test_split_respects_buffer_after():
     windows = [(time(9, 0), time(11, 0))]
-    slots = split_into_slots(windows, duration_minutes=60, buffer_after_minutes=15)
+    slots = split_into_slots(windows, duration_minutes=60, buffer_before_minutes=0, buffer_after_minutes=15)
     assert slots == [time(9, 0)]
+
+
+def test_split_respects_buffer_before():
+    # 15-min buffer before + 30-min appointment = first slot at 9:15
+    windows = [(time(9, 0), time(10, 0))]
+    slots = split_into_slots(windows, duration_minutes=30, buffer_before_minutes=15, buffer_after_minutes=0)
+    assert slots == [time(9, 15)]
 
 
 def test_compute_slots_no_rules_returns_empty():
@@ -90,3 +97,22 @@ def test_compute_slots_advance_notice_filters():
     assert time(9, 0) not in result
     assert time(10, 0) not in result
     assert time(10, 30) in result
+
+
+def test_compute_slots_with_buffer_before():
+    rule = make_rule(0, "09:00", "11:00")  # Monday
+    result = compute_slots(
+        target_date=date(2025, 3, 3),
+        rules=[rule],
+        blocked_periods=[],
+        busy_intervals=[],
+        duration_minutes=30,
+        buffer_before_minutes=15,
+        buffer_after_minutes=0,
+        min_advance_hours=0,
+        now=datetime(2025, 3, 2, 8, 0),
+    )
+    # 9:00 window: buffer 9:00-9:15, appointment 9:15-9:45, next buffer 9:45-10:00, appointment 10:00-10:30
+    assert time(9, 15) in result
+    assert time(10, 0) in result
+    assert time(9, 0) not in result

@@ -9,7 +9,10 @@ def make_service():
 
 def test_get_auth_url_returns_google_url():
     service = make_service()
-    url = service.get_auth_url()
+    mock_flow = MagicMock()
+    mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?...", "state")
+    with patch.object(service, "_make_flow", return_value=mock_flow):
+        url = service.get_auth_url()
     assert url.startswith("https://accounts.google.com")
 
 

@@ -1,5 +1,4 @@
 from datetime import date, datetime, time, timedelta
-from app.models import AvailabilityRule, BlockedPeriod
 
 
 def _time_to_minutes(t: time) -> int:
@@ -23,7 +22,7 @@ def subtract_intervals(
             if busy_start.date() > target_date or busy_end.date() < target_date:
                 continue
             b_start = busy_start.time() if busy_start.date() == target_date else time(0, 0)
-            b_end = busy_end.time() if busy_end.date() == target_date else time(23, 59)
+            b_end = busy_end.time() if busy_end.date() == target_date else time(23, 59, 59)
             new_segments = []
             for s, e in segments:
                 if b_end <= s or b_start >= e:
@@ -41,17 +40,24 @@ def subtract_intervals(
 def split_into_slots(
     windows: list[tuple[time, time]],
     duration_minutes: int,
+    buffer_before_minutes: int,
     buffer_after_minutes: int,
 ) -> list[time]:
-    """Split time windows into appointment start times."""
-    slot_duration = duration_minutes + buffer_after_minutes
+    """Split time windows into appointment start times.
+
+    buffer_before_minutes: free time required before each appointment start.
+    The returned slot time is the appointment start (after the buffer).
+    Each slot consumes buffer_before + duration + buffer_after minutes.
+    """
+    slot_total = buffer_before_minutes + duration_minutes + buffer_after_minutes
     slots = []
     for w_start, w_end in windows:
         current = _time_to_minutes(w_start)
         end = _time_to_minutes(w_end)
-        while current + duration_minutes <= end:
-            slots.append(_minutes_to_time(current))
-            current += slot_duration
+        while current + buffer_before_minutes + duration_minutes <= end:
+            # Slot time shown to user = appointment start = after buffer_before
+            slots.append(_minutes_to_time(current + buffer_before_minutes))
+            current += slot_total
     return slots
 
 
@@ -88,21 +94,14 @@ def compute_slots(
     # Subtract Google Calendar busy intervals
     windows = subtract_intervals(windows, busy_intervals, target_date)
 
-    # Apply buffer_before by shrinking window starts
-    if buffer_before_minutes:
-        windows = [
-            (_minutes_to_time(_time_to_minutes(s) + buffer_before_minutes), e)
-            for s, e in windows
-            if _time_to_minutes(e) - _time_to_minutes(s) > buffer_before_minutes
-        ]
+    # Split into slots (buffer_before handled inside split_into_slots)
+    slots = split_into_slots(windows, duration_minutes, buffer_before_minutes, buffer_after_minutes)
 
-    # Split into slots
-    slots = split_into_slots(windows, duration_minutes, buffer_after_minutes)
-
-    # Filter out slots too soon
-    if now + timedelta(hours=min_advance_hours) > datetime.combine(target_date, time(23, 59)):
-        return []
+    # Filter out slots before min_advance cutoff
+    end_of_day = datetime.combine(target_date, time(23, 59, 59))
     cutoff = now + timedelta(hours=min_advance_hours)
+    if cutoff > end_of_day:
+        return []
     if cutoff.date() == target_date:
         cutoff_time = cutoff.time()
         slots = [s for s in slots if s >= cutoff_time]

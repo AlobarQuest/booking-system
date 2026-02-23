@@ -39,7 +39,13 @@ class CalendarService:
         """Exchange OAuth code for refresh token. Returns the refresh token."""
         flow = self._make_flow()
         flow.fetch_token(code=code)
-        return flow.credentials.refresh_token
+        token = flow.credentials.refresh_token
+        if not token:
+            raise ValueError(
+                "OAuth exchange did not return a refresh token. "
+                "Ensure access_type='offline' and prompt='consent' are set."
+            )
+        return token
 
     def is_authorized(self, refresh_token: str) -> bool:
         return bool(refresh_token)
@@ -58,11 +64,13 @@ class CalendarService:
     def get_busy_intervals(
         self, refresh_token: str, calendar_ids: list[str], start: datetime, end: datetime
     ) -> list[tuple[datetime, datetime]]:
-        """Return list of (start, end) busy intervals from Google Calendar freebusy API."""
+        """Return list of (start, end) busy intervals from Google Calendar freebusy API.
+        start and end must be naive UTC datetimes.
+        """
         service = self._build_service(refresh_token)
         body = {
-            "timeMin": start.isoformat() + "Z",
-            "timeMax": end.isoformat() + "Z",
+            "timeMin": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "timeMax": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "items": [{"id": cal_id} for cal_id in calendar_ids],
         }
         result = service.freebusy().query(body=body).execute()
@@ -89,8 +97,8 @@ class CalendarService:
         event = {
             "summary": summary,
             "description": description,
-            "start": {"dateTime": start.isoformat(), "timeZone": "UTC"},
-            "end": {"dateTime": end.isoformat(), "timeZone": "UTC"},
+            "start": {"dateTime": start.strftime("%Y-%m-%dT%H:%M:%S") + "Z", "timeZone": "UTC"},
+            "end": {"dateTime": end.strftime("%Y-%m-%dT%H:%M:%S") + "Z", "timeZone": "UTC"},
         }
         if attendee_email:
             event["attendees"] = [{"email": attendee_email}]
