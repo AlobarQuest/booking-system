@@ -49,4 +49,51 @@
     {% if google_authorized %}Re-authorize Google Calendar{% else %}Connect Google Calendar{% endif %}
   </a>
 </div>
+
+<div class="card" style="cursor:default;max-width:520px;margin-top:2rem;">
+  <h2 style="margin-bottom:.75rem;">Conflict Calendars</h2>
+  <p style="color:#64748b;font-size:.875rem;margin-bottom:1rem;">
+    These calendars are checked for busy times when computing available slots.
+    Supports Google Calendar IDs and webcal:// ICS feed URLs.
+  </p>
+
+  {% if conflict_cals %}
+  <table style="margin-bottom:1rem;">
+    <thead><tr><th>Name</th><th>Type</th><th>ID / URL</th><th></th></tr></thead>
+    <tbody>
+    {% for i, c in conflict_cals | enumerate %}
+    <tr>
+      <td>{{ c.name }}</td>
+      <td>{{ c.type }}</td>
+      <td style="font-size:.8rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.id }}</td>
+      <td>
+        <form method="post" action="/admin/settings/conflict-calendars/{{ i }}/delete">
+          <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#64748b;font-size:.875rem;margin-bottom:1rem;">No conflict calendars added yet.</p>
+  {% endif %}
+
+  <form method="post" action="/admin/settings/conflict-calendars" style="margin-top:.5rem;">
+    <label>Type
+      <select name="cal_type">
+        <option value="google">Google Calendar</option>
+        <option value="webcal">webcal / ICS URL</option>
+      </select>
+    </label>
+    <label>Calendar ID or URL
+      <input type="text" name="cal_id"
+             placeholder="e.g. primary, user@gmail.com, or webcal://...">
+    </label>
+    <label>Display Name (optional)
+      <input type="text" name="cal_name" placeholder="e.g. ShowingTime">
+    </label>
+    <button type="submit" class="btn btn-secondary" style="margin-top:.25rem;">Add Calendar</button>
+  </form>
+</div>
 {% endblock %}

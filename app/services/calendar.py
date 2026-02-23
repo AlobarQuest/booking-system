@@ -1,7 +1,10 @@
+import httpx
 from datetime import datetime
+from datetime import date as _date_type
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from icalendar import Calendar as ICalendar
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
@@ -116,3 +119,44 @@ class CalendarService:
         """Delete a calendar event."""
         service = self._build_service(refresh_token)
         service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+
+
+def fetch_webcal_busy(
+    url: str, start: datetime, end: datetime
+) -> list[tuple[datetime, datetime]]:
+    """Fetch an ICS/webcal feed and return busy (start, end) intervals as naive UTC datetimes.
+
+    Skips recurring events (RRULE). All-day events are treated as busy for the full day (UTC).
+    """
+    from datetime import timezone as _utc_tz
+    http_url = url.replace("webcal://", "https://").replace("webcal:", "https:")
+    resp = httpx.get(http_url, timeout=10, follow_redirects=True)
+    resp.raise_for_status()
+
+    cal = ICalendar.from_ical(resp.content)
+    intervals = []
+    for component in cal.walk():
+        if component.name != "VEVENT":
+            continue
+        if component.get("RRULE"):
+            continue  # skip recurring events
+        dt_start_prop = component.get("dtstart")
+        dt_end_prop = component.get("dtend")
+        if not dt_start_prop or not dt_end_prop:
+            continue
+        ev_start = dt_start_prop.dt
+        ev_end = dt_end_prop.dt
+        # All-day events come as date, not datetime
+        if isinstance(ev_start, _date_type) and not isinstance(ev_start, datetime):
+            ev_start = datetime(ev_start.year, ev_start.month, ev_start.day, 0, 0, 0)
+        if isinstance(ev_end, _date_type) and not isinstance(ev_end, datetime):
+            ev_end = datetime(ev_end.year, ev_end.month, ev_end.day, 0, 0, 0)
+        # Convert timezone-aware datetimes to naive UTC
+        if getattr(ev_start, "tzinfo", None) is not None:
+            ev_start = ev_start.astimezone(_utc_tz.utc).replace(tzinfo=None)
+        if getattr(ev_end, "tzinfo", None) is not None:
+            ev_end = ev_end.astimezone(_utc_tz.utc).replace(tzinfo=None)
+        # Only include events overlapping the query window
+        if ev_end > start and ev_start < end:
+            intervals.append((ev_start, ev_end))
+    return intervals

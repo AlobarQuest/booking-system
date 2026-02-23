@@ -13,6 +13,7 @@ from app.services.calendar import CalendarService
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["enumerate"] = enumerate
 AuthDep = Depends(require_admin)
 
 
@@ -297,6 +298,7 @@ def cancel_booking_route(
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
+    import json as _json
     settings = get_settings()
     refresh_token = get_setting(db, "google_refresh_token", "")
     cal = CalendarService(
@@ -304,6 +306,11 @@ def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         settings.google_client_secret,
         settings.google_redirect_uri,
     )
+    conflict_cals_raw = get_setting(db, "conflict_calendars", "[]")
+    try:
+        conflict_cals = _json.loads(conflict_cals_raw)
+    except (ValueError, TypeError):
+        conflict_cals = []
     return templates.TemplateResponse("admin/settings.html", {
         "request": request,
         "owner_name": get_setting(db, "owner_name", ""),
@@ -311,6 +318,7 @@ def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         "notifications_enabled": get_setting(db, "notifications_enabled", "true") == "true",
         "timezone": get_setting(db, "timezone", "America/New_York"),
         "google_authorized": cal.is_authorized(refresh_token),
+        "conflict_cals": conflict_cals,
         "flash": _get_flash(request),
     })
 
@@ -347,6 +355,46 @@ def change_password(
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     set_setting(db, "admin_password_hash", hashed)
     _flash(request, "Password changed successfully.")
+    return RedirectResponse("/admin/settings", status_code=302)
+
+
+@router.post("/settings/conflict-calendars")
+def add_conflict_calendar(
+    request: Request,
+    cal_type: str = Form(...),
+    cal_id: str = Form(...),
+    cal_name: str = Form(""),
+    db: Session = Depends(get_db),
+    _=AuthDep,
+):
+    import json as _json
+    raw = get_setting(db, "conflict_calendars", "[]")
+    try:
+        cals = _json.loads(raw)
+    except (ValueError, TypeError):
+        cals = []
+    cal_id = cal_id.strip()
+    if cal_id:
+        cals.append({"type": cal_type, "id": cal_id, "name": cal_name.strip() or cal_id})
+        set_setting(db, "conflict_calendars", _json.dumps(cals))
+        _flash(request, "Conflict calendar added.")
+    return RedirectResponse("/admin/settings", status_code=302)
+
+
+@router.post("/settings/conflict-calendars/{index}/delete")
+def delete_conflict_calendar(
+    request: Request, index: int, db: Session = Depends(get_db), _=AuthDep
+):
+    import json as _json
+    raw = get_setting(db, "conflict_calendars", "[]")
+    try:
+        cals = _json.loads(raw)
+    except (ValueError, TypeError):
+        cals = []
+    if 0 <= index < len(cals):
+        cals.pop(index)
+        set_setting(db, "conflict_calendars", _json.dumps(cals))
+        _flash(request, "Conflict calendar removed.")
     return RedirectResponse("/admin/settings", status_code=302)
 
 

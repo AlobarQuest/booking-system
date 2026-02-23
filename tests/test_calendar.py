@@ -46,3 +46,90 @@ def test_get_busy_intervals_parses_response():
     assert len(intervals) == 1
     assert intervals[0][0] == datetime(2025, 3, 3, 12, 0)
     assert intervals[0][1] == datetime(2025, 3, 3, 13, 0)
+
+
+def test_fetch_webcal_busy_parses_ics():
+    from unittest.mock import patch, MagicMock
+    from datetime import datetime, timezone
+    from app.services.calendar import fetch_webcal_busy
+
+    # Minimal valid ICS with one event: 2025-03-03 09:00-09:30 UTC
+    ics_content = b"""BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20250303T090000Z
+DTEND:20250303T093000Z
+SUMMARY:Test Event
+END:VEVENT
+END:VCALENDAR"""
+
+    mock_response = MagicMock()
+    mock_response.content = ics_content
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("app.services.calendar.httpx.get", return_value=mock_response):
+        start = datetime(2025, 3, 3, 0, 0, 0)
+        end = datetime(2025, 3, 4, 0, 0, 0)
+        intervals = fetch_webcal_busy("webcal://example.com/cal", start, end)
+
+    assert len(intervals) == 1
+    assert intervals[0][0] == datetime(2025, 3, 3, 9, 0, 0)
+    assert intervals[0][1] == datetime(2025, 3, 3, 9, 30, 0)
+
+
+def test_fetch_webcal_busy_excludes_out_of_range():
+    from unittest.mock import patch, MagicMock
+    from datetime import datetime
+    from app.services.calendar import fetch_webcal_busy
+
+    ics_content = b"""BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20250310T090000Z
+DTEND:20250310T093000Z
+SUMMARY:Different Day
+END:VEVENT
+END:VCALENDAR"""
+
+    mock_response = MagicMock()
+    mock_response.content = ics_content
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("app.services.calendar.httpx.get", return_value=mock_response):
+        start = datetime(2025, 3, 3, 0, 0, 0)
+        end = datetime(2025, 3, 4, 0, 0, 0)
+        intervals = fetch_webcal_busy("webcal://example.com/cal", start, end)
+
+    assert intervals == []
+
+
+def test_fetch_webcal_busy_all_day_event():
+    from unittest.mock import patch, MagicMock
+    from datetime import datetime
+    from app.services.calendar import fetch_webcal_busy
+
+    # All-day event on 2025-03-03: DTSTART:20250303, DTEND:20250304 (exclusive per RFC 5545)
+    ics_content = b"""BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20250303
+DTEND;VALUE=DATE:20250304
+SUMMARY:All Day Event
+END:VEVENT
+END:VCALENDAR"""
+
+    mock_response = MagicMock()
+    mock_response.content = ics_content
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("app.services.calendar.httpx.get", return_value=mock_response):
+        # Query window: 2025-03-03 (should include the all-day event)
+        start = datetime(2025, 3, 3, 0, 0, 0)
+        end = datetime(2025, 3, 4, 0, 0, 0)
+        intervals = fetch_webcal_busy("webcal://example.com/cal", start, end)
+
+    assert len(intervals) == 1
+    # ev_start: DTSTART:20250303 -> datetime(2025, 3, 3, 0, 0, 0)
+    assert intervals[0][0] == datetime(2025, 3, 3, 0, 0, 0)
+    # ev_end: DTEND:20250304 (exclusive) -> datetime(2025, 3, 4, 0, 0, 0)
+    assert intervals[0][1] == datetime(2025, 3, 4, 0, 0, 0)

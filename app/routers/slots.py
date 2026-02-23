@@ -38,6 +38,18 @@ def get_slots(
 
     tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
 
+    # Load conflict calendars from settings
+    import json as _json
+    conflict_cals_raw = get_setting(db, "conflict_calendars", "[]")
+    try:
+        conflict_cals = _json.loads(conflict_cals_raw)
+    except (ValueError, TypeError):
+        conflict_cals = []
+
+    # Collect additional Google calendar IDs and webcal URLs from global conflict list
+    extra_google_ids = [c["id"] for c in conflict_cals if c.get("type") == "google" and c.get("id")]
+    webcal_urls = [c["id"] for c in conflict_cals if c.get("type") == "webcal" and c.get("id")]
+
     busy_intervals = []
     if refresh_token and settings.google_client_id:
         from app.services.calendar import CalendarService
@@ -46,21 +58,36 @@ def get_slots(
             settings.google_client_secret,
             settings.google_redirect_uri,
         )
-        # Query Google using local-midnight-to-local-midnight converted to UTC
         local_midnight = datetime.combine(target_date, time_type(0, 0)).replace(tzinfo=tz)
         day_start = local_midnight.astimezone(dt_timezone.utc).replace(tzinfo=None)
         day_end = (local_midnight + timedelta(days=1)).astimezone(dt_timezone.utc).replace(tzinfo=None)
+
+        # Build the full list of Google calendar IDs to check
+        google_ids = list({appt_type.calendar_id} | set(extra_google_ids))
         try:
-            utc_busy = cal.get_busy_intervals(
-                refresh_token, [appt_type.calendar_id], day_start, day_end
-            )
-            # Convert UTC busy intervals to local time so they align with availability rule times
+            utc_busy = cal.get_busy_intervals(refresh_token, google_ids, day_start, day_end)
             for utc_start, utc_end in utc_busy:
                 local_start = utc_start.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                 local_end = utc_end.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                 busy_intervals.append((local_start, local_end))
         except Exception:
-            pass  # Degrade gracefully if Calendar API fails
+            pass
+
+    # Fetch webcal/ICS conflict calendars
+    for webcal_url in webcal_urls:
+        try:
+            from app.services.calendar import fetch_webcal_busy
+            from datetime import timezone as _utc
+            local_midnight = datetime.combine(target_date, time_type(0, 0)).replace(tzinfo=tz)
+            day_start_utc = local_midnight.astimezone(_utc.utc).replace(tzinfo=None)
+            day_end_utc = (local_midnight + timedelta(days=1)).astimezone(_utc.utc).replace(tzinfo=None)
+            utc_busy = fetch_webcal_busy(webcal_url, day_start_utc, day_end_utc)
+            for utc_start, utc_end in utc_busy:
+                local_start = utc_start.replace(tzinfo=_utc.utc).astimezone(tz).replace(tzinfo=None)
+                local_end = utc_end.replace(tzinfo=_utc.utc).astimezone(tz).replace(tzinfo=None)
+                busy_intervals.append((local_start, local_end))
+        except Exception:
+            pass  # Degrade gracefully if webcal fetch fails
 
     # Use local time for advance-notice cutoff so it aligns with local slot times
     now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
