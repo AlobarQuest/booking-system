@@ -1,0 +1,17 @@
+{% if slots %}
+<div class="slots-grid">
+  {% for slot in slots %}
+  <button
+    class="slot-btn"
+    hx-get="/book/form?type_id={{ type_id }}&date={{ date }}&time={{ slot }}"
+    hx-target="#booking-form-area"
+    hx-swap="innerHTML"
+    onclick="selectSlot(this)"
+  >
+    {{ slot }}
+  </button>
+  {% endfor %}
+</div>
+{% else %}
+<p class="no-slots">No available times on this date. Please choose another day.</p>
+{% endif %}

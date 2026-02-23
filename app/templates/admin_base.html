@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Admin{% endblock %} — Booking Admin</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body class="admin">
+  <nav class="admin-nav">
+    <a href="/admin/">Dashboard</a>
+    <a href="/admin/appointment-types">Appointment Types</a>
+    <a href="/admin/availability">Availability</a>
+    <a href="/admin/bookings">Bookings</a>
+    <a href="/admin/settings">Settings</a>
+    <a href="/admin/logout" style="margin-left:auto;">Logout</a>
+  </nav>
+  <main class="admin-container">
+    {% if flash %}
+    <div class="flash flash-{{ flash.type }}">{{ flash.message }}</div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
