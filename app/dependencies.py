@@ -1,13 +1,18 @@
 from fastapi import Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models import Setting
 
 
-def require_admin(request: Request, db: Session = Depends(get_db)):
+class AdminNotAuthenticated(Exception):
+    pass
+
+
+def require_admin(request: Request):
     if not request.session.get("admin_authenticated"):
-        from fastapi.responses import RedirectResponse
-        raise HTTPException(status_code=302, headers={"Location": "/admin/login"})
+        raise AdminNotAuthenticated()
     return True
 
 
