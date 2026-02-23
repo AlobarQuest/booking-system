@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.dependencies import get_setting
+from app.limiter import limiter
 from app.models import AppointmentType, Booking
 from app.services.booking import create_booking
 
@@ -67,6 +68,7 @@ def booking_form(
 
 
 @router.post("/book", response_class=HTMLResponse)
+@limiter.limit("10/hour")
 async def submit_booking(
     request: Request,
     db: Session = Depends(get_db),

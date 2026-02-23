@@ -1,10 +1,9 @@
 .venv/
 __pycache__/
 *.pyc
-*.pyo
 .env
+tests/
 *.db
+.git/
 .pytest_cache/
-*.egg-info/
-dist/
-build/
+docs/
