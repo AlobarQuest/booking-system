@@ -11,8 +11,8 @@
   {% for rule in rules %}
   <tr>
     <td>{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][rule.day_of_week] }}</td>
-    <td>{{ rule.start_time }}</td>
-    <td>{{ rule.end_time }}</td>
+    <td>{{ rule.start_time_display }}</td>
+    <td>{{ rule.end_time_display }}</td>
     <td>{% if rule.active %}Active{% else %}Inactive{% endif %}</td>
     <td>
       <form method="post" action="/admin/availability/rules/{{ rule.id }}/delete">

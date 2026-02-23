@@ -58,7 +58,7 @@ def test_slots_returns_html_for_valid_date():
         mock_dt.combine = datetime.combine
         response = client.get(f"/slots?type_id={appt_id}&date=2025-03-03")
     assert response.status_code == 200
-    assert "09:00" in response.text
+    assert "9:00 AM" in response.text
     app.dependency_overrides.clear()
 
 
@@ -79,4 +79,18 @@ def test_slots_invalid_type_returns_error():
     response = client.get("/slots?type_id=9999&date=2025-03-03")
     assert response.status_code == 200
     assert "not found" in response.text.lower()
+    app.dependency_overrides.clear()
+
+
+def test_slots_display_12_hour_format():
+    client, appt_id = setup_db()
+    with patch("app.routers.slots.datetime") as mock_dt:
+        mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
+        mock_dt.combine = datetime.combine
+        response = client.get(f"/slots?type_id={appt_id}&date=2025-03-03")
+    assert response.status_code == 200
+    # Should show "9:00 AM" as display label, not "09:00"
+    assert "9:00 AM" in response.text
+    # "09:00" may appear in hx-get URL params (slot.value) but must not appear as button label text
+    assert ">\n    09:00\n  <" not in response.text
     app.dependency_overrides.clear()

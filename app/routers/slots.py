@@ -77,8 +77,11 @@ def get_slots(
         now=now_local,
     )
 
-    slot_strings = [s.strftime("%H:%M") for s in slots]
+    slot_data = [
+        {"value": s.strftime("%H:%M"), "display": s.strftime("%-I:%M %p")}
+        for s in slots
+    ]
     return templates.TemplateResponse(
         "booking/slots_partial.html",
-        {"request": request, "slots": slot_strings, "type_id": type_id, "date": date},
+        {"request": request, "slots": slot_data, "type_id": type_id, "date": date},
     )

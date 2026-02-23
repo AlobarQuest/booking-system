@@ -3,12 +3,12 @@
   {% for slot in slots %}
   <button
     class="slot-btn"
-    hx-get="/book/form?type_id={{ type_id }}&date={{ date }}&time={{ slot }}"
+    hx-get="/book/form?type_id={{ type_id }}&date={{ date }}&time={{ slot.value }}"
     hx-target="#booking-form-area"
     hx-swap="innerHTML"
     onclick="selectSlot(this)"
   >
-    {{ slot }}
+    {{ slot.display }}
   </button>
   {% endfor %}
 </div>

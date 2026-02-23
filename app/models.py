@@ -41,6 +41,16 @@ class AvailabilityRule(Base):
     end_time: Mapped[str] = mapped_column(String(5), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    @property
+    def start_time_display(self) -> str:
+        from datetime import datetime as _dt
+        return _dt.strptime(self.start_time, "%H:%M").strftime("%-I:%M %p")
+
+    @property
+    def end_time_display(self) -> str:
+        from datetime import datetime as _dt
+        return _dt.strptime(self.end_time, "%H:%M").strftime("%-I:%M %p")
+
 
 class BlockedPeriod(Base):
     __tablename__ = "blocked_periods"
