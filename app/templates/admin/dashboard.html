@@ -1,0 +1,36 @@
+{% extends "admin_base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin:1.5rem 0;">
+  <div class="card" style="cursor:default;">
+    <p style="color:#64748b;font-size:.85rem;margin-bottom:.25rem;">Upcoming (7 days)</p>
+    <p style="font-size:2rem;font-weight:700;">{{ upcoming_count }}</p>
+  </div>
+  <div class="card" style="cursor:default;">
+    <p style="color:#64748b;font-size:.85rem;margin-bottom:.25rem;">Total Confirmed</p>
+    <p style="font-size:2rem;font-weight:700;">{{ total_count }}</p>
+  </div>
+</div>
+
+<h2>Next Appointments</h2>
+{% if next_bookings %}
+<table>
+  <thead>
+    <tr><th>Date/Time</th><th>Type</th><th>Guest</th><th>Email</th></tr>
+  </thead>
+  <tbody>
+  {% for b in next_bookings %}
+  <tr>
+    <td>{{ b.start_datetime.strftime("%b %-d, %Y %-I:%M %p") }}</td>
+    <td>{{ b.appointment_type.name }}</td>
+    <td>{{ b.guest_name }}</td>
+    <td>{{ b.guest_email }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:#64748b;margin-top:.5rem;">No upcoming appointments.</p>
+{% endif %}
+{% endblock %}

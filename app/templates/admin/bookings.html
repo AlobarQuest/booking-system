@@ -1,0 +1,55 @@
+{% extends "admin_base.html" %}
+{% block title %}Bookings{% endblock %}
+{% block content %}
+<h1>Bookings</h1>
+
+<h2>Upcoming</h2>
+{% if upcoming %}
+<table style="margin-bottom:2rem;">
+  <thead>
+    <tr><th>Date/Time</th><th>Type</th><th>Guest</th><th>Email</th><th>Phone</th><th>Notes</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for b in upcoming %}
+  <tr>
+    <td style="white-space:nowrap;">{{ b.start_datetime.strftime("%b %-d, %Y<br>%-I:%M %p")|safe }}</td>
+    <td>{{ b.appointment_type.name }}</td>
+    <td>{{ b.guest_name }}</td>
+    <td>{{ b.guest_email }}</td>
+    <td>{{ b.guest_phone or "—" }}</td>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">{{ b.notes or "—" }}</td>
+    <td>
+      <form method="post" action="/admin/bookings/{{ b.id }}/cancel"
+            onsubmit="return confirm('Cancel booking for {{ b.guest_name }}?')">
+        <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Cancel</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:#64748b;margin-bottom:2rem;">No upcoming bookings.</p>
+{% endif %}
+
+<div class="section">
+  <h2>Past Bookings</h2>
+  {% if past %}
+  <table>
+    <thead><tr><th>Date/Time</th><th>Type</th><th>Guest</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for b in past %}
+    <tr>
+      <td>{{ b.start_datetime.strftime("%b %-d, %Y %-I:%M %p") }}</td>
+      <td>{{ b.appointment_type.name }}</td>
+      <td>{{ b.guest_name }}</td>
+      <td>{{ b.status }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#64748b;">No past bookings.</p>
+  {% endif %}
+</div>
+{% endblock %}

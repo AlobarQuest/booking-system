@@ -1,0 +1,91 @@
+{% extends "admin_base.html" %}
+{% block title %}Availability{% endblock %}
+{% block content %}
+<h1>Availability</h1>
+
+<h2>Weekly Schedule</h2>
+{% if rules %}
+<table style="margin-bottom:1rem;">
+  <thead><tr><th>Day</th><th>Start</th><th>End</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for rule in rules %}
+  <tr>
+    <td>{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][rule.day_of_week] }}</td>
+    <td>{{ rule.start_time }}</td>
+    <td>{{ rule.end_time }}</td>
+    <td>{% if rule.active %}Active{% else %}Inactive{% endif %}</td>
+    <td>
+      <form method="post" action="/admin/availability/rules/{{ rule.id }}/delete">
+        <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:#64748b;margin-bottom:1rem;">No availability rules yet.</p>
+{% endif %}
+
+<div class="card" style="cursor:default;max-width:400px;margin-bottom:2rem;">
+  <h3 style="margin-bottom:.75rem;">Add Availability Window</h3>
+  <form method="post" action="/admin/availability/rules">
+    <label>Day
+      <select name="day_of_week">
+        {% for i, d in [('0','Monday'),('1','Tuesday'),('2','Wednesday'),('3','Thursday'),('4','Friday'),('5','Saturday'),('6','Sunday')] %}
+        <option value="{{ i }}">{{ d }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Start Time <input type="time" name="start_time" value="09:00" required></label>
+    <label>End Time <input type="time" name="end_time" value="17:00" required></label>
+    <button type="submit" class="btn btn-primary" style="margin-top:.25rem;">Add Rule</button>
+  </form>
+</div>
+
+<h2>Blocked Periods</h2>
+{% if blocks %}
+<table style="margin-bottom:1rem;">
+  <thead><tr><th>Start</th><th>End</th><th>Reason</th><th></th></tr></thead>
+  <tbody>
+  {% for b in blocks %}
+  <tr>
+    <td>{{ b.start_datetime.strftime("%b %-d, %Y %-I:%M %p") }}</td>
+    <td>{{ b.end_datetime.strftime("%b %-d, %Y %-I:%M %p") }}</td>
+    <td>{{ b.reason or "—" }}</td>
+    <td>
+      <form method="post" action="/admin/availability/blocks/{{ b.id }}/delete">
+        <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Remove</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:#64748b;margin-bottom:1rem;">No blocked periods.</p>
+{% endif %}
+
+<div class="card" style="cursor:default;max-width:400px;margin-bottom:2rem;">
+  <h3 style="margin-bottom:.75rem;">Block a Period</h3>
+  <form method="post" action="/admin/availability/blocks">
+    <label>Start <input type="datetime-local" name="start_datetime" required></label>
+    <label>End <input type="datetime-local" name="end_datetime" required></label>
+    <label>Reason (optional) <input type="text" name="reason"></label>
+    <button type="submit" class="btn btn-primary" style="margin-top:.25rem;">Block Time</button>
+  </form>
+</div>
+
+<div class="card" style="cursor:default;max-width:400px;">
+  <h3 style="margin-bottom:.75rem;">Booking Window</h3>
+  <form method="post" action="/admin/availability/settings">
+    <label>Minimum advance notice (hours)
+      <input type="number" name="min_advance_hours" value="{{ min_advance }}" min="0">
+    </label>
+    <label>Maximum days in advance
+      <input type="number" name="max_future_days" value="{{ max_future }}" min="1">
+    </label>
+    <button type="submit" class="btn btn-primary" style="margin-top:.25rem;">Save</button>
+  </form>
+</div>
+{% endblock %}

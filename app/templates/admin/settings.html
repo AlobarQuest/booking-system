@@ -1,0 +1,52 @@
+{% extends "admin_base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="card" style="cursor:default;max-width:520px;margin-bottom:2rem;">
+  <h2 style="margin-bottom:1rem;">General</h2>
+  <form method="post" action="/admin/settings">
+    <label>Your Name (used in confirmation emails)
+      <input type="text" name="owner_name" value="{{ owner_name }}">
+    </label>
+    <label>Notification Email (your address for new booking alerts)
+      <input type="email" name="notify_email" value="{{ notify_email }}">
+    </label>
+    <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+      <input type="checkbox" name="notifications_enabled" value="true"
+             {% if notifications_enabled %}checked{% endif %}
+             style="width:auto;">
+      Send email notifications
+    </label>
+    <label>Timezone
+      <input type="text" name="timezone" value="{{ timezone }}" placeholder="America/New_York">
+    </label>
+    <button type="submit" class="btn btn-primary">Save Settings</button>
+  </form>
+</div>
+
+<div class="card" style="cursor:default;max-width:520px;margin-bottom:2rem;">
+  <h2 style="margin-bottom:1rem;">Change Admin Password</h2>
+  <form method="post" action="/admin/settings/password">
+    <label>New Password
+      <input type="password" name="password" minlength="8" required>
+    </label>
+    <label>Confirm
+      <input type="password" name="confirm" required>
+    </label>
+    <button type="submit" class="btn btn-secondary">Change Password</button>
+  </form>
+</div>
+
+<div class="card" style="cursor:default;max-width:520px;">
+  <h2 style="margin-bottom:.75rem;">Google Calendar</h2>
+  {% if google_authorized %}
+  <p style="color:#059669;margin-bottom:.75rem;">&#10003; Connected</p>
+  {% else %}
+  <p style="color:#dc2626;margin-bottom:.75rem;">Not connected — calendar availability and event creation will be skipped.</p>
+  {% endif %}
+  <a href="/admin/google/authorize" class="btn btn-secondary">
+    {% if google_authorized %}Re-authorize Google Calendar{% else %}Connect Google Calendar{% endif %}
+  </a>
+</div>
+{% endblock %}

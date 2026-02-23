@@ -1,0 +1,68 @@
+{% extends "admin_base.html" %}
+{% block title %}Appointment Types{% endblock %}
+{% block content %}
+<h1>Appointment Types</h1>
+
+{% if types %}
+<table style="margin-bottom:2rem;">
+  <thead>
+    <tr><th>Name</th><th>Duration</th><th>Buffer</th><th>Calendar</th><th>Status</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+  {% for t in types %}
+  <tr>
+    <td>
+      <strong>{{ t.name }}</strong>
+      {% if t.description %}<br><small style="color:#64748b;">{{ t.description }}</small>{% endif %}
+    </td>
+    <td>{{ t.duration_minutes }} min</td>
+    <td>{% if t.buffer_before_minutes %}{{ t.buffer_before_minutes }}m before / {% endif %}{{ t.buffer_after_minutes }}m after</td>
+    <td><code style="font-size:.8rem;">{{ t.calendar_id }}</code></td>
+    <td>{% if t.active %}<span style="color:#059669;">Active</span>{% else %}<span style="color:#dc2626;">Inactive</span>{% endif %}</td>
+    <td style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <a href="/admin/appointment-types/{{ t.id }}/edit" class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .6rem;">Edit</a>
+      <form method="post" action="/admin/appointment-types/{{ t.id }}/toggle">
+        <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .6rem;">
+          {% if t.active %}Disable{% else %}Enable{% endif %}
+        </button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:#64748b;margin-bottom:1.5rem;">No appointment types yet. Create one below.</p>
+{% endif %}
+
+<div class="card" style="cursor:default;max-width:520px;">
+  <h2>{% if edit_type %}Edit: {{ edit_type.name }}{% else %}New Appointment Type{% endif %}</h2>
+  <form method="post" action="{% if edit_type %}/admin/appointment-types/{{ edit_type.id }}{% else %}/admin/appointment-types{% endif %}" style="margin-top:1rem;">
+    <label>Name *
+      <input type="text" name="name" value="{{ edit_type.name if edit_type else '' }}" required>
+    </label>
+    <label>Description
+      <input type="text" name="description" value="{{ edit_type.description if edit_type else '' }}">
+    </label>
+    <label>Duration (minutes) *
+      <input type="number" name="duration_minutes" value="{{ edit_type.duration_minutes if edit_type else 30 }}" required min="5">
+    </label>
+    <label>Buffer before (minutes)
+      <input type="number" name="buffer_before_minutes" value="{{ edit_type.buffer_before_minutes if edit_type else 0 }}" min="0">
+    </label>
+    <label>Buffer after (minutes)
+      <input type="number" name="buffer_after_minutes" value="{{ edit_type.buffer_after_minutes if edit_type else 0 }}" min="0">
+    </label>
+    <label>Google Calendar ID
+      <input type="text" name="calendar_id" value="{{ edit_type.calendar_id if edit_type else 'primary' }}">
+    </label>
+    <label>Color
+      <input type="color" name="color" value="{{ edit_type.color if edit_type else '#3b82f6' }}" style="width:60px;height:36px;padding:2px;">
+    </label>
+    <div style="display:flex;gap:.75rem;margin-top:.25rem;">
+      <button type="submit" class="btn btn-primary">{% if edit_type %}Save Changes{% else %}Create Type{% endif %}</button>
+      {% if edit_type %}<a href="/admin/appointment-types" class="btn btn-secondary">Cancel</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
