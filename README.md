@@ -44,7 +44,7 @@ Open http://localhost:8000 — first visit to `/admin` redirects to password set
 # Install Fly CLI: https://fly.io/docs/hands-on/install-flyctl/
 fly auth login
 fly launch              # creates app and prompts for config
-fly volumes create booking_data --size 1
+fly volume create booking_data --region iad --size 1
 fly secrets set \
   DATABASE_URL=sqlite:////data/booking.db \
   SECRET_KEY=$(openssl rand -hex 32) \
@@ -56,10 +56,21 @@ fly secrets set \
 fly deploy
 ```
 
-## Cloudflare DNS
+## Custom Domain DNS
 
-In the Cloudflare dashboard for `devonwatkins.com`:
-- Add a CNAME record: `appointment` → `booking-assistant.fly.dev` (Proxy ON)
+Point your subdomain to Fly.io using one of these methods:
+
+**Option A — CNAME (Cloudflare or any DNS provider):**
+- Add a CNAME record: `appointment` → `booking-system-fragrant-water-2550.fly.dev`
+
+**Option B — A/AAAA records (required if using Cloudflare Proxy):**
+- A record: `appointment` → `66.241.125.170`
+- AAAA record: `appointment` → `2a09:8280:1::d7:d8cb:0`
+
+Then provision the TLS certificate on Fly:
+```bash
+fly certs add appointment.devonwatkins.com
+```
 
 ## Running Tests
 
