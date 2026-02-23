@@ -26,7 +26,10 @@ def get_slots(
     if not appt_type:
         return HTMLResponse("<p class='no-slots'>Appointment type not found.</p>")
 
-    target_date = date_type.fromisoformat(date)
+    try:
+        target_date = date_type.fromisoformat(date)
+    except ValueError:
+        return HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
     rules = db.query(AvailabilityRule).filter_by(active=True).all()
     blocked = db.query(BlockedPeriod).all()
     min_advance = int(get_setting(db, "min_advance_hours", "24"))
