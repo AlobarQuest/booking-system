@@ -35,6 +35,8 @@ def init_db():
             ("location", "TEXT NOT NULL DEFAULT ''"),
             ("show_as", "VARCHAR(20) NOT NULL DEFAULT 'busy'"),
             ("visibility", "VARCHAR(20) NOT NULL DEFAULT 'default'"),
+            ("owner_event_title", "TEXT NOT NULL DEFAULT ''"),
+            ("guest_event_title", "TEXT NOT NULL DEFAULT ''"),
         ]:
             if col not in existing:
                 conn.execute(text(f"ALTER TABLE appointment_types ADD COLUMN {col} {definition}"))

@@ -21,6 +21,8 @@ class AppointmentType(Base):
     visibility: Mapped[str] = mapped_column(String(20), default="default")  # "default" | "public" | "private"
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     color: Mapped[str] = mapped_column(String(20), default="#3b82f6")
+    owner_event_title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    guest_event_title: Mapped[str] = mapped_column(Text, nullable=False, default="")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
 
     @property

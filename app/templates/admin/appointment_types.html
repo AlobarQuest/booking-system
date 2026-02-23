@@ -75,6 +75,16 @@
         <option value="private" {% if edit_type and edit_type.visibility == 'private' %}selected{% endif %}>Private</option>
       </select>
     </label>
+    <label>My Calendar Event Title
+      <input type="text" name="owner_event_title"
+             value="{{ edit_type.owner_event_title if edit_type else '' }}"
+             placeholder="e.g. Showing — 123 Main St (leave blank for default)">
+    </label>
+    <label>Guest Confirmation Title
+      <input type="text" name="guest_event_title"
+             value="{{ edit_type.guest_event_title if edit_type else '' }}"
+             placeholder="e.g. Your Home Tour (leave blank to use appointment type name)">
+    </label>
     <div style="display:flex;gap:.75rem;margin-top:.25rem;">
       <button type="submit" class="btn btn-primary">{% if edit_type %}Save Changes{% else %}Create Type{% endif %}</button>
       {% if edit_type %}<a href="/admin/appointment-types" class="btn btn-secondary">Cancel</a>{% endif %}

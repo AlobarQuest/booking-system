@@ -75,6 +75,8 @@ def create_appt_type(
     location: str = Form(""),
     show_as: str = Form("busy"),
     visibility: str = Form("default"),
+    owner_event_title: str = Form(""),
+    guest_event_title: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
 ):
@@ -82,7 +84,8 @@ def create_appt_type(
         name=name, description=description, duration_minutes=duration_minutes,
         buffer_before_minutes=buffer_before_minutes, buffer_after_minutes=buffer_after_minutes,
         calendar_id=calendar_id, color=color, location=location, show_as=show_as,
-        visibility=visibility, active=True,
+        visibility=visibility, owner_event_title=owner_event_title, guest_event_title=guest_event_title,
+        active=True,
     )
     t.custom_fields = []
     db.add(t)
@@ -110,6 +113,8 @@ def update_appt_type(
     buffer_after_minutes: int = Form(0), calendar_id: str = Form("primary"),
     color: str = Form("#3b82f6"), location: str = Form(""),
     show_as: str = Form("busy"), visibility: str = Form("default"),
+    owner_event_title: str = Form(""),
+    guest_event_title: str = Form(""),
     db: Session = Depends(get_db), _=AuthDep,
 ):
     t = db.query(AppointmentType).filter_by(id=type_id).first()
@@ -119,6 +124,8 @@ def update_appt_type(
         t.buffer_after_minutes = buffer_after_minutes
         t.calendar_id = calendar_id; t.color = color
         t.location = location; t.show_as = show_as; t.visibility = visibility
+        t.owner_event_title = owner_event_title
+        t.guest_event_title = guest_event_title
         db.commit()
         _flash(request, f"Updated '{name}'.")
     return RedirectResponse("/admin/appointment-types", status_code=302)

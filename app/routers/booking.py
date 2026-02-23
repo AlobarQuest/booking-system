@@ -155,7 +155,7 @@ async def submit_booking(
             event_id = cal.create_event(
                 refresh_token=refresh_token,
                 calendar_id=appt_type.calendar_id,
-                summary=f"{appt_type.name} — {guest_name}",
+                summary=appt_type.owner_event_title or f"{appt_type.name} — {guest_name}",
                 description="\n".join(description_lines),
                 start=start_dt,
                 end=end_dt,
@@ -173,6 +173,7 @@ async def submit_booking(
     notify_email = get_setting(db, "notify_email", "")
     notifications_enabled = get_setting(db, "notifications_enabled", "true") == "true"
     owner_name = get_setting(db, "owner_name", "")
+    guest_appt_name = appt_type.guest_event_title or appt_type.name
     if notifications_enabled and settings.resend_api_key:
         from app.services.email import send_guest_confirmation, send_admin_alert
         try:
@@ -181,7 +182,7 @@ async def submit_booking(
                 from_email=settings.from_email,
                 guest_email=guest_email,
                 guest_name=guest_name,
-                appt_type_name=appt_type.name,
+                appt_type_name=guest_appt_name,
                 start_dt=start_dt,
                 end_dt=end_dt,
                 custom_responses=custom_responses,
@@ -198,7 +199,7 @@ async def submit_booking(
                     guest_name=guest_name,
                     guest_email=guest_email,
                     guest_phone=guest_phone,
-                    appt_type_name=appt_type.name,
+                    appt_type_name=guest_appt_name,
                     start_dt=start_dt,
                     notes=notes,
                     custom_responses=custom_responses,

@@ -34,3 +34,23 @@ def test_all_tables_create():
     db.commit()
     assert db.query(Setting).filter_by(key="timezone").first().value == "America/New_York"
     db.close()
+
+
+def test_appointment_type_has_title_fields():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    appt = AppointmentType(
+        name="Showing",
+        duration_minutes=30,
+        owner_event_title="Rental Showing — 123 Main St",
+        guest_event_title="Your Home Tour",
+        active=True,
+    )
+    appt._custom_fields = "[]"
+    db.add(appt)
+    db.commit()
+    assert appt.owner_event_title == "Rental Showing — 123 Main St"
+    assert appt.guest_event_title == "Your Home Tour"
+    db.close()
