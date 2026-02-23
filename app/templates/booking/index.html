@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Book an Appointment{% endblock %}
+{% block content %}
+<h1>Schedule an Appointment</h1>
+<p class="subtitle">Select a type and choose a time that works for you.</p>
+
+<div id="type-selection">
+  {% for appt in appointment_types %}
+  <div class="card" onclick="selectType({{ appt.id }}, this)">
+    <h3>{{ appt.name }}</h3>
+    <p>{{ appt.description }}{% if appt.description %} &bull; {% endif %}{{ appt.duration_minutes }} min</p>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="date-picker-area" style="display:none;" class="section">
+  <label for="date-input" style="font-weight:600;">Choose a date:</label>
+  <input type="date" id="date-input" style="max-width:200px;margin-top:.5rem;"
+    min="{{ min_date }}" max="{{ max_date }}"
+    hx-get="/slots"
+    hx-include="[name='type_id']"
+    hx-target="#slots-area"
+    hx-swap="innerHTML"
+    hx-trigger="change"
+    name="date">
+  <input type="hidden" name="type_id" id="type_id_input" value="">
+</div>
+
+<div id="slots-area" class="section"></div>
+<div id="booking-form-area" class="section"></div>
+
+<script>
+function selectType(id, el) {
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('type_id_input').value = id;
+  document.getElementById('date-picker-area').style.display = 'block';
+  document.getElementById('slots-area').innerHTML = '';
+  document.getElementById('booking-form-area').innerHTML = '';
+  document.getElementById('date-input').value = '';
+}
+
+function selectSlot(el) {
+  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+</script>
+{% endblock %}
