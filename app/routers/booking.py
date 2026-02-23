@@ -160,6 +160,9 @@ async def submit_booking(
                 start=start_dt,
                 end=end_dt,
                 attendee_email=guest_email,
+                location=appt_type.location,
+                show_as=appt_type.show_as,
+                visibility=appt_type.visibility,
             )
             booking.google_event_id = event_id
             db.commit()

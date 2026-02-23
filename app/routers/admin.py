@@ -72,13 +72,17 @@ def create_appt_type(
     buffer_after_minutes: int = Form(0),
     calendar_id: str = Form("primary"),
     color: str = Form("#3b82f6"),
+    location: str = Form(""),
+    show_as: str = Form("busy"),
+    visibility: str = Form("default"),
     db: Session = Depends(get_db),
     _=AuthDep,
 ):
     t = AppointmentType(
         name=name, description=description, duration_minutes=duration_minutes,
         buffer_before_minutes=buffer_before_minutes, buffer_after_minutes=buffer_after_minutes,
-        calendar_id=calendar_id, color=color, active=True,
+        calendar_id=calendar_id, color=color, location=location, show_as=show_as,
+        visibility=visibility, active=True,
     )
     t.custom_fields = []
     db.add(t)
@@ -104,7 +108,9 @@ def update_appt_type(
     name: str = Form(...), description: str = Form(""),
     duration_minutes: int = Form(...), buffer_before_minutes: int = Form(0),
     buffer_after_minutes: int = Form(0), calendar_id: str = Form("primary"),
-    color: str = Form("#3b82f6"), db: Session = Depends(get_db), _=AuthDep,
+    color: str = Form("#3b82f6"), location: str = Form(""),
+    show_as: str = Form("busy"), visibility: str = Form("default"),
+    db: Session = Depends(get_db), _=AuthDep,
 ):
     t = db.query(AppointmentType).filter_by(id=type_id).first()
     if t:
@@ -112,6 +118,7 @@ def update_appt_type(
         t.buffer_before_minutes = buffer_before_minutes
         t.buffer_after_minutes = buffer_after_minutes
         t.calendar_id = calendar_id; t.color = color
+        t.location = location; t.show_as = show_as; t.visibility = visibility
         db.commit()
         _flash(request, f"Updated '{name}'.")
     return RedirectResponse("/admin/appointment-types", status_code=302)

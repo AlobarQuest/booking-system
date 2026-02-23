@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import get_settings
@@ -28,3 +28,14 @@ def get_db():
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Add columns introduced after initial schema (SQLite doesn't support IF NOT EXISTS on ALTER)
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(appointment_types)"))}
+        for col, definition in [
+            ("location", "TEXT NOT NULL DEFAULT ''"),
+            ("show_as", "VARCHAR(20) NOT NULL DEFAULT 'busy'"),
+            ("visibility", "VARCHAR(20) NOT NULL DEFAULT 'default'"),
+        ]:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE appointment_types ADD COLUMN {col} {definition}"))
+        conn.commit()

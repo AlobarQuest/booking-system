@@ -59,6 +59,22 @@
     <label>Color
       <input type="color" name="color" value="{{ edit_type.color if edit_type else '#3b82f6' }}" style="width:60px;height:36px;padding:2px;">
     </label>
+    <label>Location
+      <input type="text" name="location" value="{{ edit_type.location if edit_type else '' }}" placeholder="e.g. 123 Main St or Zoom link">
+    </label>
+    <label>Show as
+      <select name="show_as">
+        <option value="busy" {% if not edit_type or edit_type.show_as == 'busy' %}selected{% endif %}>Busy</option>
+        <option value="free" {% if edit_type and edit_type.show_as == 'free' %}selected{% endif %}>Free</option>
+      </select>
+    </label>
+    <label>Visibility
+      <select name="visibility">
+        <option value="default" {% if not edit_type or edit_type.visibility == 'default' %}selected{% endif %}>Default (calendar setting)</option>
+        <option value="public" {% if edit_type and edit_type.visibility == 'public' %}selected{% endif %}>Public</option>
+        <option value="private" {% if edit_type and edit_type.visibility == 'private' %}selected{% endif %}>Private</option>
+      </select>
+    </label>
     <div style="display:flex;gap:.75rem;margin-top:.25rem;">
       <button type="submit" class="btn btn-primary">{% if edit_type %}Save Changes{% else %}Create Type{% endif %}</button>
       {% if edit_type %}<a href="/admin/appointment-types" class="btn btn-secondary">Cancel</a>{% endif %}

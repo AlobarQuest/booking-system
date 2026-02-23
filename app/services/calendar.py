@@ -91,6 +91,9 @@ class CalendarService:
         start: datetime,
         end: datetime,
         attendee_email: str = "",
+        location: str = "",
+        show_as: str = "busy",
+        visibility: str = "default",
     ) -> str:
         """Create a calendar event. Returns the event ID."""
         service = self._build_service(refresh_token)
@@ -99,7 +102,11 @@ class CalendarService:
             "description": description,
             "start": {"dateTime": start.strftime("%Y-%m-%dT%H:%M:%S") + "Z", "timeZone": "UTC"},
             "end": {"dateTime": end.strftime("%Y-%m-%dT%H:%M:%S") + "Z", "timeZone": "UTC"},
+            "transparency": "transparent" if show_as == "free" else "opaque",
+            "visibility": visibility,
         }
+        if location:
+            event["location"] = location
         if attendee_email:
             event["attendees"] = [{"email": attendee_email}]
         result = service.events().insert(calendarId=calendar_id, body=event, sendUpdates="all").execute()

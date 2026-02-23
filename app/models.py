@@ -16,6 +16,9 @@ class AppointmentType(Base):
     buffer_after_minutes: Mapped[int] = mapped_column(Integer, default=0)
     calendar_id: Mapped[str] = mapped_column(String(200), default="primary")
     _custom_fields: Mapped[str] = mapped_column("custom_fields", Text, default="[]")
+    location: Mapped[str] = mapped_column(Text, default="")
+    show_as: Mapped[str] = mapped_column(String(20), default="busy")  # "free" | "busy"
+    visibility: Mapped[str] = mapped_column(String(20), default="default")  # "default" | "public" | "private"
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     color: Mapped[str] = mapped_column(String(20), default="#3b82f6")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
