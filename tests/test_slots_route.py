@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -54,7 +54,7 @@ def test_slots_returns_html_for_valid_date():
     client, appt_id = setup_db()
     # 2025-03-03 is a Monday; mock utcnow to a time before the date so slots are not filtered
     with patch("app.routers.slots.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = datetime(2025, 3, 1, 0, 0, 0)
+        mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
         response = client.get(f"/slots?type_id={appt_id}&date=2025-03-03")
     assert response.status_code == 200
@@ -66,7 +66,7 @@ def test_slots_returns_no_slots_for_wrong_day():
     client, appt_id = setup_db()
     # 2025-03-04 is a Tuesday — no rules for Tuesday
     with patch("app.routers.slots.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = datetime(2025, 3, 1, 0, 0, 0)
+        mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
         response = client.get(f"/slots?type_id={appt_id}&date=2025-03-04")
     assert response.status_code == 200

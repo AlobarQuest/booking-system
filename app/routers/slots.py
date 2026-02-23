@@ -1,4 +1,5 @@
-from datetime import datetime, date as date_type, time as time_type
+from datetime import datetime, date as date_type, time as time_type, timedelta, timezone as dt_timezone
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -35,23 +36,34 @@ def get_slots(
     min_advance = int(get_setting(db, "min_advance_hours", "24"))
     refresh_token = get_setting(db, "google_refresh_token", "")
 
+    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
+
     busy_intervals = []
     if refresh_token and settings.google_client_id:
         from app.services.calendar import CalendarService
-        from datetime import timedelta
         cal = CalendarService(
             settings.google_client_id,
             settings.google_client_secret,
             settings.google_redirect_uri,
         )
-        day_start = datetime.combine(target_date, time_type(0, 0))
-        day_end = day_start + timedelta(days=1)
+        # Query Google using local-midnight-to-local-midnight converted to UTC
+        local_midnight = datetime.combine(target_date, time_type(0, 0)).replace(tzinfo=tz)
+        day_start = local_midnight.astimezone(dt_timezone.utc).replace(tzinfo=None)
+        day_end = (local_midnight + timedelta(days=1)).astimezone(dt_timezone.utc).replace(tzinfo=None)
         try:
-            busy_intervals = cal.get_busy_intervals(
+            utc_busy = cal.get_busy_intervals(
                 refresh_token, [appt_type.calendar_id], day_start, day_end
             )
+            # Convert UTC busy intervals to local time so they align with availability rule times
+            for utc_start, utc_end in utc_busy:
+                local_start = utc_start.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
+                local_end = utc_end.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
+                busy_intervals.append((local_start, local_end))
         except Exception:
             pass  # Degrade gracefully if Calendar API fails
+
+    # Use local time for advance-notice cutoff so it aligns with local slot times
+    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
 
     slots = compute_slots(
         target_date=target_date,
@@ -62,7 +74,7 @@ def get_slots(
         buffer_before_minutes=appt_type.buffer_before_minutes,
         buffer_after_minutes=appt_type.buffer_after_minutes,
         min_advance_hours=min_advance,
-        now=datetime.utcnow(),
+        now=now_local,
     )
 
     slot_strings = [s.strftime("%H:%M") for s in slots]
