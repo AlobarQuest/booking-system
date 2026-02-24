@@ -1,8 +1,10 @@
 <div class="confirmation-box">
-  <h2>&#10003; Booking Confirmed!</h2>
-  <p style="margin-top:.75rem;">
+  <div class="confirmation-icon">✓</div>
+  <h2>You're Confirmed!</h2>
+  <p>
     <strong>{{ booking.appointment_type.name }}</strong><br>
-    {{ start_display }}<br>
-    A confirmation has been sent to <strong>{{ booking.guest_email }}</strong>.
+    {{ start_display }}<br><br>
+    A confirmation has been sent to<br>
+    <strong>{{ booking.guest_email }}</strong>
   </p>
 </div>

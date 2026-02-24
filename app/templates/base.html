@@ -4,12 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Book an Appointment{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="/static/js/htmx.min.js"></script>
 </head>
 <body>
-  <main class="container">
+  {% block page %}
+  <header class="booking-header">
+    <h1>{% block header_title %}Book an Appointment{% endblock %}</h1>
+    <p>{% block header_subtitle %}Choose a time that works for you{% endblock %}</p>
+  </header>
+  <div class="booking-body">
     {% block content %}{% endblock %}
-  </main>
+  </div>
+  {% endblock %}
 </body>
 </html>

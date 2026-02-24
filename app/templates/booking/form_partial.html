@@ -1,19 +1,23 @@
-<div class="card" style="cursor:default;">
-  <h2>Your details</h2>
-  <p style="color:#64748b;margin-bottom:1.25rem;">
-    <strong>{{ appt_type.name }}</strong> &bull; {{ date_display }} at {{ time_display }}
-  </p>
+<div class="form-card">
+  <div class="form-header">
+    <h2>Your details</h2>
+    <div class="appt-summary">
+      <span class="appt-pill">{{ appt_type.name }}</span>
+      <span class="appt-pill">{{ date_display }}</span>
+      <span class="appt-pill">{{ time_display }}</span>
+    </div>
+  </div>
   <form hx-post="/book" hx-target="#booking-form-area" hx-swap="innerHTML">
     <input type="hidden" name="type_id" value="{{ appt_type.id }}">
     <input type="hidden" name="start_datetime" value="{{ start_datetime }}">
     <label>Full Name *
-      <input type="text" name="guest_name" required autofocus>
+      <input type="text" name="guest_name" required autofocus placeholder="Jane Smith">
     </label>
     <label>Email Address *
-      <input type="email" name="guest_email" required>
+      <input type="email" name="guest_email" required placeholder="jane@example.com">
     </label>
     <label>Phone Number
-      <input type="tel" name="guest_phone">
+      <input type="tel" name="guest_phone" placeholder="(555) 000-0000">
     </label>
     {% for field in appt_type.custom_fields %}
     <label>{{ field.label }}{% if field.required %} *{% endif %}
@@ -24,6 +28,6 @@
     <label>Notes
       <textarea name="notes" rows="3" placeholder="Anything else we should know?"></textarea>
     </label>
-    <button type="submit" class="btn btn-primary">Confirm Booking</button>
+    <button type="submit" class="btn btn-primary" style="margin-top:.25rem;">Confirm Booking &rarr;</button>
   </form>
 </div>
