@@ -1,20 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Initial Setup{% endblock %}
-{% block content %}
-<div style="max-width:400px;margin:4rem auto;">
-  <h1>Welcome!</h1>
-  <p class="subtitle">Set your admin password to get started.</p>
-  {% if error %}
-  <p class="flash flash-error" style="margin-top:1rem;">{{ error }}</p>
-  {% endif %}
-  <form method="post" action="/admin/setup" style="margin-top:1.5rem;">
-    <label>New Password
-      <input type="password" name="password" required minlength="8">
-    </label>
-    <label>Confirm Password
-      <input type="password" name="confirm" required minlength="8">
-    </label>
-    <button type="submit" class="btn btn-primary" style="margin-top:.5rem;width:100%;">Set Password & Continue</button>
-  </form>
+{% block page %}
+<style>
+  .auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f5f9;
+    padding: 2rem 1rem;
+  }
+  .auth-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.05);
+  }
+  .auth-card h1 { font-size: 1.375rem; margin-bottom: 1.5rem; color: #0f172a; }
+</style>
+<div class="auth-page">
+  <div class="auth-card">
+    <h1>Welcome!</h1>
+    <p class="subtitle">Set your admin password to get started.</p>
+    {% if error %}
+    <p class="flash flash-error" style="margin-top:1rem;">{{ error }}</p>
+    {% endif %}
+    <form method="post" action="/admin/setup" style="margin-top:1.5rem;">
+      <label>New Password
+        <input type="password" name="password" required minlength="8">
+      </label>
+      <label>Confirm Password
+        <input type="password" name="confirm" required minlength="8">
+      </label>
+      <button type="submit" class="btn btn-primary" style="margin-top:.5rem;width:100%;">Set Password & Continue</button>
+    </form>
+  </div>
 </div>
 {% endblock %}

@@ -1,16 +1,37 @@
 {% extends "base.html" %}
 {% block title %}Admin Login{% endblock %}
-{% block content %}
-<div style="max-width:360px;margin:4rem auto;">
-  <h1>Admin Login</h1>
-  {% if error %}
-  <p class="flash flash-error" style="margin-top:1rem;">{{ error }}</p>
-  {% endif %}
-  <form method="post" action="/admin/login" style="margin-top:1.5rem;">
-    <label>Password
-      <input type="password" name="password" autofocus required>
-    </label>
-    <button type="submit" class="btn btn-primary" style="margin-top:.5rem;width:100%;">Login</button>
-  </form>
+{% block page %}
+<style>
+  .auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f5f9;
+    padding: 2rem 1rem;
+  }
+  .auth-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.05);
+  }
+  .auth-card h1 { font-size: 1.375rem; margin-bottom: 1.5rem; color: #0f172a; }
+</style>
+<div class="auth-page">
+  <div class="auth-card">
+    <h1>Admin Login</h1>
+    {% if error %}
+    <p class="flash flash-error" style="margin-top:1rem;">{{ error }}</p>
+    {% endif %}
+    <form method="post" action="/admin/login" style="margin-top:1.5rem;">
+      <label>Password
+        <input type="password" name="password" autofocus required>
+      </label>
+      <button type="submit" class="btn btn-primary" style="margin-top:.5rem;width:100%;">Login</button>
+    </form>
+  </div>
 </div>
 {% endblock %}
