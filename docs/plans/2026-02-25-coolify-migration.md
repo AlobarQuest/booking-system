@@ -1,6 +1,40 @@
 # Coolify Migration Implementation Plan
 
-> **For Claude:** This is a human-executed infrastructure runbook. Most steps require interacting with external web UIs (Hetzner, Coolify, Google Cloud Console) and a remote server via SSH. Guide the user through each task interactively. Subagent execution is not applicable for the server/UI steps, but Claude can prepare commands, verify config files, and confirm results.
+---
+
+## Instructions for Claude (read this first)
+
+You are helping the user migrate this FastAPI booking app from Fly.io to a self-hosted Coolify instance on Hetzner. This is an **interactive, human-in-the-loop runbook** — not an automated execution plan.
+
+**Project context:**
+- Repo: `AlobarQuest/booking-system` on GitHub, local path `/home/devon/Projects/BookingAssistant`
+- FastAPI + SQLite app, already Dockerized (see `Dockerfile`)
+- App exposes port 8080, reads config from environment variables (see `app/config.py`)
+- SQLite database must persist at `/data/booking.db` inside the container
+- Fly.io app name was `booking-system-fragrant-water-2550` (being decommissioned)
+- Google OAuth is already configured — redirect URI must be updated to the new domain
+
+**How to work through this plan:**
+1. Work through tasks one at a time with the user
+2. For 🌐 browser steps and 🖥️ SSH steps: explain what to do, wait for the user to do it, then ask what they see before moving on
+3. For 💻 local steps: you can run them directly using Bash if helpful, or provide the command for the user to run
+4. When the user hits an error: read the error carefully, check the relevant config files in the repo, and diagnose before suggesting a fix
+5. Before Task 8 (env vars): generate `SECRET_KEY` with `openssl rand -hex 32` using the Bash tool so it's ready to paste
+6. The `GOOGLE_REDIRECT_URI` must match exactly what's in Google Cloud Console — ask the user what domain they've chosen before Task 6
+7. If the user gets stuck or something in Coolify's UI looks different from the plan: Coolify's UI evolves — adapt based on what the user describes
+
+**What you can do to help:**
+- Run `openssl rand -hex 32` to generate secrets
+- Read repo files (`app/config.py`, `Dockerfile`, `fly.toml`) to answer questions
+- Help diagnose errors from build logs or SSH output the user pastes
+- Verify DNS with `dig` or `curl` commands
+- Update the repo if any code changes turn out to be needed (they shouldn't be)
+
+**What requires the human:**
+- All 🌐 steps (Hetzner console, Coolify UI, Google Cloud Console, Cloudflare DNS)
+- All 🖥️ steps (SSH into the VPS) — unless the user shares their SSH session output for you to analyze
+
+---
 
 **Goal:** Move the booking app from Fly.io to a self-hosted Coolify instance on Hetzner, establishing a reusable platform for future apps at a fixed ~$4.50/month regardless of how many apps are added.
 
