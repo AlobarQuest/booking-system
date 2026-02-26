@@ -166,20 +166,26 @@ def fetch_webcal_busy(
 ) -> list[tuple[datetime, datetime]]:
     """Fetch an ICS/webcal feed and return busy (start, end) intervals as naive UTC datetimes.
 
-    Skips recurring events (RRULE). All-day events are treated as busy for the full day (UTC).
+    Handles both one-time and recurring events (RRULE).
+    All-day events are treated as busy for the full day (UTC).
+    start and end must be naive UTC datetimes.
     """
+    import recurring_ical_events
     from datetime import timezone as _utc_tz
+
     http_url = url.replace("webcal://", "https://").replace("webcal:", "https:")
     resp = httpx.get(http_url, timeout=10, follow_redirects=True)
     resp.raise_for_status()
 
     cal = ICalendar.from_ical(resp.content)
+    # Pass timezone-aware bounds so recurring_ical_events handles TZID events correctly
+    utc_start = start.replace(tzinfo=_utc_tz.utc)
+    utc_end = end.replace(tzinfo=_utc_tz.utc)
+
     intervals = []
-    for component in cal.walk():
+    for component in recurring_ical_events.of(cal).between(utc_start, utc_end):
         if component.name != "VEVENT":
             continue
-        if component.get("RRULE"):
-            continue  # skip recurring events
         dt_start_prop = component.get("dtstart")
         dt_end_prop = component.get("dtend")
         if not dt_start_prop or not dt_end_prop:
@@ -196,7 +202,5 @@ def fetch_webcal_busy(
             ev_start = ev_start.astimezone(_utc_tz.utc).replace(tzinfo=None)
         if getattr(ev_end, "tzinfo", None) is not None:
             ev_end = ev_end.astimezone(_utc_tz.utc).replace(tzinfo=None)
-        # Only include events overlapping the query window
-        if ev_end > start and ev_start < end:
-            intervals.append((ev_start, ev_end))
+        intervals.append((ev_start, ev_end))
     return intervals

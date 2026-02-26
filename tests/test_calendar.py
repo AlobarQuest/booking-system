@@ -157,6 +157,30 @@ def test_get_events_for_day_missing_location_returns_empty_string():
     assert events[0]["location"] == ""
 
 
+def test_fetch_webcal_busy_recurring_event():
+    """Recurring events (RRULE) must be included, not silently skipped."""
+    from unittest.mock import patch, MagicMock
+    from datetime import datetime
+    from app.services.calendar import fetch_webcal_busy
+
+    # Weekly recurring event: every Monday 10:00-11:00 UTC starting 2025-03-03
+    ics_content = b"""BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nDTSTART:20250303T100000Z\r\nDTEND:20250303T110000Z\r\nRRULE:FREQ=WEEKLY;BYDAY=MO\r\nSUMMARY:Weekly Meeting\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"""
+
+    mock_response = MagicMock()
+    mock_response.content = ics_content
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("app.services.calendar.httpx.get", return_value=mock_response):
+        # Query 2025-03-03 (Monday) — should include the recurring event occurrence
+        start = datetime(2025, 3, 3, 0, 0, 0)
+        end = datetime(2025, 3, 4, 0, 0, 0)
+        intervals = fetch_webcal_busy("webcal://example.com/cal", start, end)
+
+    assert len(intervals) == 1, f"Expected 1 interval, got {len(intervals)}"
+    assert intervals[0][0] == datetime(2025, 3, 3, 10, 0, 0)
+    assert intervals[0][1] == datetime(2025, 3, 3, 11, 0, 0)
+
+
 def test_fetch_webcal_busy_all_day_event():
     from unittest.mock import patch, MagicMock
     from datetime import datetime
