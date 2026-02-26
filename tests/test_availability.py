@@ -122,18 +122,25 @@ def test_compute_slots_with_buffer_before():
     assert time(9, 0) not in result
 
 
-def test_split_aligns_slots_to_duration_grid_after_trim():
-    """When drive time shifts a window start off the round-minute grid, slots
-    must still be aligned to multiples of duration_minutes — not the trimmed time."""
-    # Simulate 9:00 window trimmed by 21-min drive time → 9:21
-    windows = [(time(9, 21), time(17, 0))]
-    slots = split_into_slots(windows, duration_minutes=30, buffer_before_minutes=0, buffer_after_minutes=0)
-    assert time(9, 21) not in slots, "9:21 is an ugly trimmed time and should not appear"
-    assert time(9, 30) in slots, "9:30 is the first grid-aligned slot after 9:21"
-    assert time(10, 0) in slots
-    # Every slot should be on the 30-minute grid
-    for s in slots:
-        assert (s.hour * 60 + s.minute) % 30 == 0, f"Slot {s} is not on the 30-min grid"
+def test_split_aligns_slots_to_15min_boundaries():
+    """After drive-time trimming shifts a window start to an odd time, slots must
+    snap to 15-minute boundaries with a 3-minute round-down tolerance.
+    e.g. 9:03 → 9:00 (within tolerance), 9:04-9:14 → 9:15 (past tolerance)."""
+    # 9:03 is within 3-min tolerance of 9:00 → snaps down to 9:00
+    windows_close = [(time(9, 3), time(10, 0))]
+    slots_close = split_into_slots(windows_close, duration_minutes=30, buffer_before_minutes=0, buffer_after_minutes=0)
+    assert time(9, 0) in slots_close, "9:03 should snap down to 9:00 (within 3-min tolerance)"
+
+    # 9:21 is past the 3-min tolerance for 9:15 → snaps up to 9:30
+    windows_far = [(time(9, 21), time(17, 0))]
+    slots_far = split_into_slots(windows_far, duration_minutes=30, buffer_before_minutes=0, buffer_after_minutes=0)
+    assert time(9, 21) not in slots_far, "9:21 should not appear as a slot"
+    assert time(9, 30) in slots_far, "9:21 should snap up to 9:30"
+    assert time(10, 0) in slots_far
+
+    # Every slot should be on the 15-minute grid
+    for s in slots_far:
+        assert (s.hour * 60 + s.minute) % 15 == 0, f"Slot {s} is not on the 15-min grid"
 
 
 def test_intersect_windows_overlapping():

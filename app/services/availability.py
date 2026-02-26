@@ -61,10 +61,15 @@ def split_into_slots(
     for w_start, w_end in windows:
         start_mins = _time_to_minutes(w_start)
         end_mins = _time_to_minutes(w_end)
-        # Align the first block start to the next multiple of duration_minutes from midnight.
-        # This keeps appointment times on a predictable grid regardless of where the window
-        # starts (which may be an odd time after drive-time trimming).
-        first_block = ((start_mins + duration_minutes - 1) // duration_minutes) * duration_minutes
+        # Snap the first block start to the nearest 15-minute boundary.
+        # Within 3 minutes past a boundary → round down (e.g. 9:03 → 9:00).
+        # 4+ minutes past → round up to the next boundary (e.g. 9:04–9:14 → 9:15).
+        _align = 15
+        remainder = start_mins % _align
+        if remainder <= 3:
+            first_block = start_mins - remainder
+        else:
+            first_block = start_mins + (_align - remainder)
         current = first_block
         while current + buffer_before_minutes + duration_minutes <= end_mins:
             slots.append(_minutes_to_time(current + buffer_before_minutes))
