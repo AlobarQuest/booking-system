@@ -122,6 +122,20 @@ def test_compute_slots_with_buffer_before():
     assert time(9, 0) not in result
 
 
+def test_split_aligns_slots_to_duration_grid_after_trim():
+    """When drive time shifts a window start off the round-minute grid, slots
+    must still be aligned to multiples of duration_minutes — not the trimmed time."""
+    # Simulate 9:00 window trimmed by 21-min drive time → 9:21
+    windows = [(time(9, 21), time(17, 0))]
+    slots = split_into_slots(windows, duration_minutes=30, buffer_before_minutes=0, buffer_after_minutes=0)
+    assert time(9, 21) not in slots, "9:21 is an ugly trimmed time and should not appear"
+    assert time(9, 30) in slots, "9:30 is the first grid-aligned slot after 9:21"
+    assert time(10, 0) in slots
+    # Every slot should be on the 30-minute grid
+    for s in slots:
+        assert (s.hour * 60 + s.minute) % 30 == 0, f"Slot {s} is not on the 30-min grid"
+
+
 def test_intersect_windows_overlapping():
     a = [(time(9, 0), time(17, 0))]
     b = [(time(11, 0), time(15, 0))]

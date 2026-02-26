@@ -46,16 +46,27 @@ def split_into_slots(
 ) -> list[time]:
     """Split time windows into appointment start times.
 
+    Block starts are aligned to the nearest multiple of duration_minutes from midnight
+    so that slot times remain on a regular grid (e.g. :00 and :30 for 30-min appointments)
+    even when windows are shifted by drive-time trimming.
+
     buffer_before_minutes: free time required before each appointment start.
     The returned slot time is the appointment start (after the buffer).
     Each slot consumes buffer_before + duration + buffer_after minutes.
     """
     slot_total = buffer_before_minutes + duration_minutes + buffer_after_minutes
+    if duration_minutes <= 0:
+        return []
     slots = []
     for w_start, w_end in windows:
-        current = _time_to_minutes(w_start)
-        end = _time_to_minutes(w_end)
-        while current + buffer_before_minutes + duration_minutes <= end:
+        start_mins = _time_to_minutes(w_start)
+        end_mins = _time_to_minutes(w_end)
+        # Align the first block start to the next multiple of duration_minutes from midnight.
+        # This keeps appointment times on a predictable grid regardless of where the window
+        # starts (which may be an odd time after drive-time trimming).
+        first_block = ((start_mins + duration_minutes - 1) // duration_minutes) * duration_minutes
+        current = first_block
+        while current + buffer_before_minutes + duration_minutes <= end_mins:
             slots.append(_minutes_to_time(current + buffer_before_minutes))
             current += slot_total
     return slots
