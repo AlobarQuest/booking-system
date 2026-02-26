@@ -1,6 +1,14 @@
 from app.config import get_settings
 
 
+def test_google_maps_api_key_defaults_empty():
+    import os
+    os.environ.pop("GOOGLE_MAPS_API_KEY", None)
+    from app.config import Settings
+    s = Settings()
+    assert s.google_maps_api_key == ""
+
+
 def test_settings_has_required_fields():
     s = get_settings()
     assert hasattr(s, "database_url")
