@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -151,14 +152,18 @@ async def submit_booking(
         ]
         for k, v in custom_responses.items():
             description_lines.append(f"{k}: {v}")
+        # start_dt/end_dt are naive local datetimes; convert to naive UTC for the calendar API
+        tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
+        start_utc = start_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
+        end_utc = end_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
         try:
             event_id = cal.create_event(
                 refresh_token=refresh_token,
                 calendar_id=appt_type.calendar_id,
                 summary=appt_type.owner_event_title or f"{appt_type.name} — {guest_name}",
                 description="\n".join(description_lines),
-                start=start_dt,
-                end=end_dt,
+                start=start_utc,
+                end=end_utc,
                 attendee_email=guest_email,
                 location=appt_type.location,
                 show_as=appt_type.show_as,

@@ -92,6 +92,48 @@ def test_submit_booking_creates_booking():
     app.dependency_overrides.clear()
 
 
+def test_submit_booking_calendar_event_uses_utc():
+    """Calendar create_event must receive UTC datetimes, not local naive datetimes.
+
+    9:30 AM on 2025-03-03 in America/New_York (EST = UTC-5) should produce
+    a calendar event starting at 14:30 UTC.
+    """
+    from unittest.mock import patch
+    from datetime import datetime
+    from app.config import Settings
+    from app.dependencies import set_setting
+
+    client, Session = setup_client()
+    db = Session()
+    set_setting(db, "timezone", "America/New_York")
+    set_setting(db, "google_refresh_token", "fake-refresh-token")
+    appt_id = db.query(AppointmentType).first().id
+    db.close()
+
+    mock_settings = Settings(
+        google_client_id="fake-client-id",
+        google_client_secret="fake-secret",
+        google_redirect_uri="http://localhost/callback",
+    )
+
+    with patch("app.routers.booking.get_settings", return_value=mock_settings), \
+         patch("app.services.calendar.CalendarService.create_event", return_value="evt-id") as mock_create:
+        response = client.post("/book", data={
+            "type_id": str(appt_id),
+            "start_datetime": "2025-03-03T09:30:00",  # 9:30 AM EST (UTC-5)
+            "guest_name": "Test User",
+            "guest_email": "test@example.com",
+        })
+    assert response.status_code == 200
+    assert mock_create.called
+    # start kwarg should be 14:30 UTC (9:30 EST + 5h = 14:30 UTC)
+    start_arg = mock_create.call_args.kwargs["start"]
+    assert start_arg == datetime(2025, 3, 3, 14, 30, 0), (
+        f"Expected 14:30 UTC but got {start_arg} — calendar event is using local time instead of UTC"
+    )
+    app.dependency_overrides.clear()
+
+
 def test_submit_booking_conflict_returns_error():
     client, Session = setup_client()
     db = Session()
