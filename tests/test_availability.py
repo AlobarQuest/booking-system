@@ -32,22 +32,31 @@ def test_subtract_intervals_no_overlap():
 
 
 def test_split_into_slots_basic():
+    # Slots step every 15 min; calendar busy checks prevent runtime conflicts
     windows = [(time(9, 0), time(11, 0))]
     slots = split_into_slots(windows, duration_minutes=60, buffer_before_minutes=0, buffer_after_minutes=0)
-    assert slots == [time(9, 0), time(10, 0)]
+    assert time(9, 0) in slots
+    assert time(9, 15) in slots
+    assert time(10, 0) in slots
+    assert time(10, 15) not in slots  # 10:15 + 60 min = 11:15, past window end
 
 
 def test_split_respects_buffer_after():
+    # buffer_after limits the last slot: last valid start is 9:45 (9:45+60+15=11:00 == window end)
     windows = [(time(9, 0), time(11, 0))]
     slots = split_into_slots(windows, duration_minutes=60, buffer_before_minutes=0, buffer_after_minutes=15)
-    assert slots == [time(9, 0)]
+    assert time(9, 0) in slots
+    assert time(9, 45) in slots
+    assert time(10, 0) not in slots  # 10:00 + 60 + 15 = 11:15, past window end
 
 
 def test_split_respects_buffer_before():
-    # 15-min buffer before + 30-min appointment = first slot at 9:15
+    # 15-min buffer before: earliest appointment start is 9:15
     windows = [(time(9, 0), time(10, 0))]
     slots = split_into_slots(windows, duration_minutes=30, buffer_before_minutes=15, buffer_after_minutes=0)
-    assert slots == [time(9, 15)]
+    assert time(9, 0) not in slots   # window start, but buffer_before pushes earliest to 9:15
+    assert time(9, 15) in slots
+    assert time(9, 30) in slots      # 9:30 + 30 min = 10:00 == window end, still fits
 
 
 def test_compute_slots_no_rules_returns_empty():
@@ -78,10 +87,13 @@ def test_compute_slots_returns_correct_times():
         min_advance_hours=0,
         now=datetime(2025, 3, 2, 8, 0),
     )
-    assert len(result) == 3
+    # Slots step every 15 min within the window (9:00-10:30 with 30-min duration)
     assert time(9, 0) in result
+    assert time(9, 15) in result
     assert time(9, 30) in result
+    assert time(9, 45) in result
     assert time(10, 0) in result
+    assert time(10, 15) not in result  # 10:15 + 30 min = 10:45, past 10:30 window end
 
 
 def test_compute_slots_advance_notice_filters():
@@ -140,6 +152,18 @@ def test_split_aligns_slots_to_15min_boundaries():
 
     # Every slot should be on the 15-minute grid
     for s in slots_far:
+        assert (s.hour * 60 + s.minute) % 15 == 0, f"Slot {s} is not on the 15-min grid"
+
+
+def test_split_all_slots_on_15min_grid_with_non_15min_duration():
+    """ALL slots must be on the 15-min grid even when duration is not a multiple of 15.
+    The previous fix only snapped the first slot; subsequent slots incremented by
+    slot_total (e.g. 20) and drifted off the grid (9:20, 9:40, ...)."""
+    windows = [(time(9, 0), time(11, 0))]
+    slots = split_into_slots(windows, duration_minutes=20, buffer_before_minutes=0, buffer_after_minutes=0)
+    assert time(9, 20) not in slots, "9:20 should not appear — not on 15-min grid"
+    assert time(9, 40) not in slots, "9:40 should not appear — not on 15-min grid"
+    for s in slots:
         assert (s.hour * 60 + s.minute) % 15 == 0, f"Slot {s} is not on the 15-min grid"
 
 

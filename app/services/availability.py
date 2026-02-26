@@ -46,34 +46,36 @@ def split_into_slots(
 ) -> list[time]:
     """Split time windows into appointment start times.
 
-    Block starts are aligned to the nearest multiple of duration_minutes from midnight
-    so that slot times remain on a regular grid (e.g. :00 and :30 for 30-min appointments)
-    even when windows are shifted by drive-time trimming.
+    All slots are aligned to 15-minute boundaries (:00, :15, :30, :45).
+    Within 3 minutes past a boundary the earliest valid start rounds down
+    (e.g. window starts at 9:03 → first slot at 9:00); 4+ minutes past rounds up
+    (e.g. 9:21 → 9:30).
 
-    buffer_before_minutes: free time required before each appointment start.
-    The returned slot time is the appointment start (after the buffer).
-    Each slot consumes buffer_before + duration + buffer_after minutes.
+    buffer_before_minutes: free time required before the appointment within the window.
+    buffer_after_minutes: free time required after the appointment within the window.
+    Slots step every 15 minutes; Google Calendar busy checks prevent runtime conflicts.
     """
-    slot_total = buffer_before_minutes + duration_minutes + buffer_after_minutes
     if duration_minutes <= 0:
         return []
     slots = []
+    _align = 15
     for w_start, w_end in windows:
         start_mins = _time_to_minutes(w_start)
         end_mins = _time_to_minutes(w_end)
-        # Snap the first block start to the nearest 15-minute boundary.
-        # Within 3 minutes past a boundary → round down (e.g. 9:03 → 9:00).
-        # 4+ minutes past → round up to the next boundary (e.g. 9:04–9:14 → 9:15).
-        _align = 15
-        remainder = start_mins % _align
+        # Earliest valid appointment start: buffer_before must fit before it in the window.
+        earliest = start_mins + buffer_before_minutes
+        # Snap to nearest 15-min boundary.
+        # Within 3 min past a boundary → round down (e.g. 9:03 → 9:00).
+        # 4+ min past → round up to the next boundary (e.g. 9:04–9:14 → 9:15).
+        remainder = earliest % _align
         if remainder <= 3:
-            first_block = start_mins - remainder
+            first_slot = earliest - remainder
         else:
-            first_block = start_mins + (_align - remainder)
-        current = first_block
-        while current + buffer_before_minutes + duration_minutes <= end_mins:
-            slots.append(_minutes_to_time(current + buffer_before_minutes))
-            current += slot_total
+            first_slot = earliest + (_align - remainder)
+        current = first_slot
+        while current + duration_minutes + buffer_after_minutes <= end_mins:
+            slots.append(_minutes_to_time(current))
+            current += _align
     return slots
 
 
