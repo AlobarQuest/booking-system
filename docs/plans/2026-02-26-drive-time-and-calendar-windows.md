@@ -1,5 +1,27 @@
 # Drive Time Buffers and Calendar-Window Availability Implementation Plan
 
+---
+
+## Instructions for Claude (read this first)
+
+**Project:** FastAPI booking system at `/home/devon/Projects/BookingAssistant` (GitHub: `AlobarQuest/booking-system`)
+**Read `CLAUDE.md` in the project root for full project context before starting.**
+
+**Your job:** Execute this plan task-by-task using TDD — write the failing test first, implement, confirm it passes, then commit. Use the `superpowers:executing-plans` skill to track progress.
+
+**Key rules:**
+- Run `pytest -v` after every task — all tests must pass before committing
+- Each task ends with a `git commit` — do not skip commits
+- The plan has complete code — use it as written, don't improvise
+- After all 8 tasks: push to `master` (`git push origin master`) — Coolify will auto-deploy
+- After deployment: set `GOOGLE_MAPS_API_KEY` in Coolify environment variables (Distance Matrix API key from Google Cloud Console)
+
+**What the features do:**
+1. **Drive Time** — `requires_drive_time` on an AppointmentType triggers Google Maps API to calculate travel time from the preceding event's location (within 1 hour) or the admin's home address to the appointment location. Result is cached in `DriveTimeCache` DB table for 30 days.
+2. **Calendar Windows** — `calendar_window_enabled` on an AppointmentType restricts slots to time windows from Google Calendar events matching `calendar_window_title` (exact, case-insensitive). Those events are intentionally marked "busy" on the calendar to block other systems — our app treats them as available windows.
+
+---
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add automatic drive time buffers (via Google Maps API with local cache) and calendar-window availability (restrict booking slots to specific Google Calendar events by title).
