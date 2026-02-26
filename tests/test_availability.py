@@ -1,5 +1,9 @@
 from datetime import date, datetime, time
-from app.services.availability import compute_slots, subtract_intervals, split_into_slots
+from app.services.availability import (
+    compute_slots, subtract_intervals, split_into_slots,
+    intersect_windows, trim_windows_for_drive_time, filter_by_advance_notice,
+    _build_free_windows,
+)
 from app.models import AvailabilityRule, BlockedPeriod
 
 
@@ -116,3 +120,128 @@ def test_compute_slots_with_buffer_before():
     assert time(9, 15) in result
     assert time(10, 0) in result
     assert time(9, 0) not in result
+
+
+def test_intersect_windows_overlapping():
+    a = [(time(9, 0), time(17, 0))]
+    b = [(time(11, 0), time(15, 0))]
+    result = intersect_windows(a, b)
+    assert result == [(time(11, 0), time(15, 0))]
+
+
+def test_intersect_windows_no_overlap():
+    a = [(time(9, 0), time(12, 0))]
+    b = [(time(13, 0), time(17, 0))]
+    result = intersect_windows(a, b)
+    assert result == []
+
+
+def test_intersect_windows_partial():
+    a = [(time(9, 0), time(14, 0))]
+    b = [(time(11, 0), time(17, 0))]
+    result = intersect_windows(a, b)
+    assert result == [(time(11, 0), time(14, 0))]
+
+
+def test_filter_by_advance_notice_filters_past_cutoff():
+    slots = [time(9, 0), time(10, 0), time(11, 0)]
+    # now is 8:30, min_advance is 2 hours -> cutoff is 10:30
+    result = filter_by_advance_notice(slots, date(2025, 3, 3), 2, datetime(2025, 3, 3, 8, 30))
+    assert time(9, 0) not in result
+    assert time(10, 0) not in result
+    assert time(11, 0) in result
+
+
+def test_trim_windows_for_drive_time_trims_by_drive_minutes():
+    from unittest.mock import patch
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.database import Base
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+
+    windows = [(time(11, 0), time(14, 0))]
+    # Preceding event ended at 10:45 (within 1 hour of 11:00 window start)
+    day_events = [
+        {"start": datetime(2025, 3, 3, 9, 0), "end": datetime(2025, 3, 3, 10, 45), "summary": "Previous Appt", "location": "123 Main St"}
+    ]
+    with patch("app.services.availability.get_drive_time", return_value=20):
+        result = trim_windows_for_drive_time(
+            windows, date(2025, 3, 3), day_events,
+            destination="456 Oak Ave", home_address="789 Home Rd", db=db
+        )
+    assert result == [(time(11, 20), time(14, 0))]
+
+
+def test_trim_windows_for_drive_time_uses_home_when_no_preceding_event():
+    from unittest.mock import patch
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.database import Base
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+
+    windows = [(time(9, 0), time(12, 0))]
+    day_events = []  # No preceding events
+    with patch("app.services.availability.get_drive_time", return_value=30) as mock_dt:
+        result = trim_windows_for_drive_time(
+            windows, date(2025, 3, 3), day_events,
+            destination="456 Oak Ave", home_address="789 Home Rd", db=db
+        )
+    mock_dt.assert_called_with("789 Home Rd", "456 Oak Ave", db)
+    assert result == [(time(9, 30), time(12, 0))]
+
+
+def test_trim_windows_for_drive_time_skips_event_outside_1hr_lookback():
+    from unittest.mock import patch
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.database import Base
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+
+    windows = [(time(14, 0), time(17, 0))]
+    # Event ended at 9am — more than 1 hour before 2pm window start
+    day_events = [
+        {"start": datetime(2025, 3, 3, 8, 0), "end": datetime(2025, 3, 3, 9, 0), "summary": "Morning Appt", "location": "Far Away Place"}
+    ]
+    with patch("app.services.availability.get_drive_time", return_value=25) as mock_dt:
+        result = trim_windows_for_drive_time(
+            windows, date(2025, 3, 3), day_events,
+            destination="456 Oak Ave", home_address="789 Home Rd", db=db
+        )
+    # Should use home_address since event is outside 1-hour lookback
+    mock_dt.assert_called_with("789 Home Rd", "456 Oak Ave", db)
+
+
+def test_trim_windows_for_drive_time_zero_for_same_location():
+    from unittest.mock import patch
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.database import Base
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+
+    windows = [(time(11, 0), time(14, 0))]
+    day_events = [
+        {"start": datetime(2025, 3, 3, 9, 0), "end": datetime(2025, 3, 3, 10, 45), "summary": "Previous", "location": "456 Oak Ave"}
+    ]
+    with patch("app.services.availability.get_drive_time") as mock_dt:
+        result = trim_windows_for_drive_time(
+            windows, date(2025, 3, 3), day_events,
+            destination="456 Oak Ave", home_address="789 Home Rd", db=db
+        )
+    mock_dt.assert_not_called()  # Same location — no API call
+    assert result == [(time(11, 0), time(14, 0))]  # No trimming
