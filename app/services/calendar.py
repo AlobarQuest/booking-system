@@ -161,12 +161,12 @@ class CalendarService:
         return events
 
 
-def fetch_webcal_busy(
+def fetch_webcal_events(
     url: str, start: datetime, end: datetime
-) -> list[tuple[datetime, datetime]]:
-    """Fetch an ICS/webcal feed and return busy (start, end) intervals as naive UTC datetimes.
+) -> list[dict]:
+    """Fetch an ICS/webcal feed and return event dicts with keys: start, end, summary, location.
 
-    Handles both one-time and recurring events (RRULE).
+    All datetimes are returned as naive UTC. Handles both one-time and recurring events (RRULE).
     All-day events are treated as busy for the full day (UTC).
     start and end must be naive UTC datetimes.
     """
@@ -182,7 +182,7 @@ def fetch_webcal_busy(
     utc_start = start.replace(tzinfo=_utc_tz.utc)
     utc_end = end.replace(tzinfo=_utc_tz.utc)
 
-    intervals = []
+    events = []
     for component in recurring_ical_events.of(cal).between(utc_start, utc_end):
         if component.name != "VEVENT":
             continue
@@ -202,5 +202,18 @@ def fetch_webcal_busy(
             ev_start = ev_start.astimezone(_utc_tz.utc).replace(tzinfo=None)
         if getattr(ev_end, "tzinfo", None) is not None:
             ev_end = ev_end.astimezone(_utc_tz.utc).replace(tzinfo=None)
-        intervals.append((ev_start, ev_end))
-    return intervals
+        loc = component.get("location")
+        events.append({
+            "start": ev_start,
+            "end": ev_end,
+            "summary": str(component.get("summary", "")),
+            "location": str(loc) if loc else "",
+        })
+    return events
+
+
+def fetch_webcal_busy(
+    url: str, start: datetime, end: datetime
+) -> list[tuple[datetime, datetime]]:
+    """Fetch an ICS/webcal feed and return busy (start, end) intervals as naive UTC datetimes."""
+    return [(ev["start"], ev["end"]) for ev in fetch_webcal_events(url, start, end)]

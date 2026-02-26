@@ -157,6 +157,29 @@ def test_get_events_for_day_missing_location_returns_empty_string():
     assert events[0]["location"] == ""
 
 
+def test_fetch_webcal_events_returns_location():
+    """fetch_webcal_events must return the location field from ICS events."""
+    from unittest.mock import patch, MagicMock
+    from datetime import datetime
+    from app.services.calendar import fetch_webcal_events
+
+    ics_content = b"""BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nDTSTART:20260228T190000Z\r\nDTEND:20260228T200000Z\r\nSUMMARY:Showing\r\nLOCATION:2260 Harvest Ridge\\, Buford GA 30519\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"""
+
+    mock_response = MagicMock()
+    mock_response.content = ics_content
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("app.services.calendar.httpx.get", return_value=mock_response):
+        start = datetime(2026, 2, 28, 0, 0, 0)
+        end = datetime(2026, 3, 1, 0, 0, 0)
+        events = fetch_webcal_events("webcal://example.com/cal", start, end)
+
+    assert len(events) == 1
+    assert events[0]["location"] == "2260 Harvest Ridge, Buford GA 30519"
+    assert events[0]["summary"] == "Showing"
+    assert events[0]["start"] == datetime(2026, 2, 28, 19, 0, 0)
+
+
 def test_fetch_webcal_busy_recurring_event():
     """Recurring events (RRULE) must be included, not silently skipped."""
     from unittest.mock import patch, MagicMock

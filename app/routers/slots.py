@@ -121,12 +121,15 @@ def get_slots(
     # Fetch webcal/ICS conflict calendars
     for webcal_url in webcal_urls:
         try:
-            from app.services.calendar import fetch_webcal_busy
-            utc_busy = fetch_webcal_busy(webcal_url, day_start, day_end)
-            for utc_start, utc_end in utc_busy:
-                local_start = utc_start.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                local_end = utc_end.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
+            from app.services.calendar import fetch_webcal_events
+            wc_events = fetch_webcal_events(webcal_url, day_start, day_end)
+            for ev in wc_events:
+                local_start = ev["start"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
+                local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                 busy_intervals.append((local_start, local_end))
+                # Include located events in drive time calculation
+                if appt_type.requires_drive_time and appt_type.location and ev["location"]:
+                    local_day_events.append({**ev, "start": local_start, "end": local_end})
         except Exception:
             pass
 
