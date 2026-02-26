@@ -1,6 +1,7 @@
 # Booking Assistant
 
-Personal appointment booking system with a public booking interface and admin panel. Integrates with Google Calendar and sends email confirmations via Resend.
+Personal appointment booking system
+ with a public booking interface and admin panel. Integrates with Google Calendar and sends email confirmations via Resend.
 
 ## Features
 
