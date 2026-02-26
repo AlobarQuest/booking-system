@@ -78,6 +78,10 @@ def create_appt_type(
     visibility: str = Form("default"),
     owner_event_title: str = Form(""),
     guest_event_title: str = Form(""),
+    requires_drive_time: str = Form("false"),
+    calendar_window_enabled: str = Form("false"),
+    calendar_window_title: str = Form(""),
+    calendar_window_calendar_id: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
 ):
@@ -86,6 +90,10 @@ def create_appt_type(
         buffer_before_minutes=buffer_before_minutes, buffer_after_minutes=buffer_after_minutes,
         calendar_id=calendar_id, color=color, location=location, show_as=show_as,
         visibility=visibility, owner_event_title=owner_event_title, guest_event_title=guest_event_title,
+        requires_drive_time=(requires_drive_time == "true"),
+        calendar_window_enabled=(calendar_window_enabled == "true"),
+        calendar_window_title=calendar_window_title,
+        calendar_window_calendar_id=calendar_window_calendar_id,
         active=True,
     )
     t.custom_fields = []
@@ -116,6 +124,10 @@ def update_appt_type(
     show_as: str = Form("busy"), visibility: str = Form("default"),
     owner_event_title: str = Form(""),
     guest_event_title: str = Form(""),
+    requires_drive_time: str = Form("false"),
+    calendar_window_enabled: str = Form("false"),
+    calendar_window_title: str = Form(""),
+    calendar_window_calendar_id: str = Form(""),
     db: Session = Depends(get_db), _=AuthDep,
 ):
     t = db.query(AppointmentType).filter_by(id=type_id).first()
@@ -127,6 +139,10 @@ def update_appt_type(
         t.location = location; t.show_as = show_as; t.visibility = visibility
         t.owner_event_title = owner_event_title
         t.guest_event_title = guest_event_title
+        t.requires_drive_time = (requires_drive_time == "true")
+        t.calendar_window_enabled = (calendar_window_enabled == "true")
+        t.calendar_window_title = calendar_window_title
+        t.calendar_window_calendar_id = calendar_window_calendar_id
         db.commit()
         _flash(request, f"Updated '{name}'.")
     return RedirectResponse("/admin/appointment-types", status_code=302)

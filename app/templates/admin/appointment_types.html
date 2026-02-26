@@ -85,6 +85,40 @@
              value="{{ edit_type.guest_event_title if edit_type else '' }}"
              placeholder="e.g. Your Home Tour (leave blank to use appointment type name)">
     </label>
+
+    <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+    <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+      <input type="checkbox" name="requires_drive_time" value="true"
+             {% if edit_type and edit_type.requires_drive_time %}checked{% endif %}
+             style="width:auto;">
+      Calculate drive time to this location before each appointment
+    </label>
+    <small style="color:#64748b;margin-top:-.5rem;">
+      Requires a physical location above and GOOGLE_MAPS_API_KEY configured in the environment.
+    </small>
+
+    <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+    <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+      <input type="checkbox" name="calendar_window_enabled" value="true"
+             id="cal_window_check"
+             {% if edit_type and edit_type.calendar_window_enabled %}checked{% endif %}
+             style="width:auto;"
+             onchange="document.getElementById('cal_window_fields').style.display=this.checked?'block':'none'">
+      Only allow bookings during specific Google Calendar events
+    </label>
+    <div id="cal_window_fields" style="display:{% if edit_type and edit_type.calendar_window_enabled %}block{% else %}none{% endif %};">
+      <label>Event Title (exact match, case-insensitive)
+        <input type="text" name="calendar_window_title"
+               value="{{ edit_type.calendar_window_title if edit_type else '' }}"
+               placeholder="e.g. POSSIBLE RENTAL SHOWINGS">
+      </label>
+      <label>Calendar ID (leave blank to use same calendar as booking)
+        <input type="text" name="calendar_window_calendar_id"
+               value="{{ edit_type.calendar_window_calendar_id if edit_type else '' }}"
+               placeholder="e.g. primary or user@gmail.com">
+      </label>
+    </div>
+
     <div style="display:flex;gap:.75rem;margin-top:.25rem;">
       <button type="submit" class="btn btn-primary">{% if edit_type %}Save Changes{% else %}Create Type{% endif %}</button>
       {% if edit_type %}<a href="/admin/appointment-types" class="btn btn-secondary">Cancel</a>{% endif %}
