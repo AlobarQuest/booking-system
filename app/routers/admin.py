@@ -317,6 +317,7 @@ def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         "notify_email": get_setting(db, "notify_email", ""),
         "notifications_enabled": get_setting(db, "notifications_enabled", "true") == "true",
         "timezone": get_setting(db, "timezone", "America/New_York"),
+        "home_address": get_setting(db, "home_address", ""),
         "google_authorized": cal.is_authorized(refresh_token),
         "conflict_cals": conflict_cals,
         "flash": _get_flash(request),
@@ -330,6 +331,7 @@ def save_settings(
     notify_email: str = Form(""),
     notifications_enabled: str = Form("false"),
     timezone: str = Form("America/New_York"),
+    home_address: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
 ):
@@ -337,6 +339,7 @@ def save_settings(
     set_setting(db, "notify_email", notify_email)
     set_setting(db, "notifications_enabled", "true" if notifications_enabled == "true" else "false")
     set_setting(db, "timezone", timezone)
+    set_setting(db, "home_address", home_address)
     _flash(request, "Settings saved.")
     return RedirectResponse("/admin/settings", status_code=302)
 
