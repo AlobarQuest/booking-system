@@ -94,3 +94,55 @@ def test_slots_display_12_hour_format():
     # "09:00" may appear in hx-get URL params (slot.value) but must not appear as button label text
     assert ">\n    09:00\n  <" not in response.text
     app.dependency_overrides.clear()
+
+
+def test_slots_applies_drive_time_when_enabled(client):
+    """When requires_drive_time=True, trim_windows_for_drive_time is called."""
+    from unittest.mock import patch, MagicMock
+    from app.models import AppointmentType, AvailabilityRule
+    from app.database import get_db
+
+    db = next(client.app.dependency_overrides[get_db]())
+    rule = AvailabilityRule(day_of_week=0, start_time="09:00", end_time="17:00", active=True)
+    db.add(rule)
+    appt = AppointmentType(
+        name="Showing", duration_minutes=60, active=True,
+        location="456 Oak Ave", requires_drive_time=True,
+        buffer_before_minutes=0, buffer_after_minutes=0,
+    )
+    db.add(appt)
+    db.commit()
+
+    with patch("app.routers.slots.trim_windows_for_drive_time", return_value=[]) as mock_trim, \
+         patch("app.routers.slots._build_free_windows", return_value=[]):
+        resp = client.get(f"/slots?type_id={appt.id}&date=2025-03-03")
+    mock_trim.assert_called_once()
+
+
+def test_slots_calendar_window_filters_slots(client):
+    """When calendar_window_enabled=True and no matching events, return no slots."""
+    from unittest.mock import patch
+    from app.models import AppointmentType, AvailabilityRule
+    from app.database import get_db
+
+    db = next(client.app.dependency_overrides[get_db]())
+    rule = AvailabilityRule(day_of_week=0, start_time="09:00", end_time="17:00", active=True)
+    db.add(rule)
+    appt = AppointmentType(
+        name="Rental Showing", duration_minutes=60, active=True,
+        location="456 Oak Ave",
+        calendar_window_enabled=True,
+        calendar_window_title="POSSIBLE RENTAL SHOWINGS",
+        buffer_before_minutes=0, buffer_after_minutes=0,
+    )
+    db.add(appt)
+    from app.dependencies import set_setting
+    set_setting(db, "google_refresh_token", "fake-token")
+    db.commit()
+
+    with patch("app.routers.slots.CalendarService") as MockCal:
+        MockCal.return_value.get_events_for_day.return_value = []  # No matching events
+        MockCal.return_value.get_busy_intervals.return_value = []
+        resp = client.get(f"/slots?type_id={appt.id}&date=2025-03-03")
+    assert resp.status_code == 200
+    assert "no-slots" in resp.text or resp.text.count("slot") == 0
