@@ -120,6 +120,46 @@ class CalendarService:
         service = self._build_service(refresh_token)
         service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
 
+    def get_events_for_day(
+        self,
+        refresh_token: str,
+        calendar_id: str,
+        day_start: datetime,
+        day_end: datetime,
+    ) -> list[dict]:
+        """Return all timed events for a day as dicts with keys: start, end, summary, location.
+
+        All datetimes are returned as naive UTC. All-day events (date-only) are excluded.
+        day_start and day_end must be naive UTC datetimes.
+        """
+        service = self._build_service(refresh_token)
+        result = (
+            service.events()
+            .list(
+                calendarId=calendar_id,
+                timeMin=day_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                timeMax=day_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute()
+        )
+        events = []
+        for item in result.get("items", []):
+            start_str = item["start"].get("dateTime")
+            end_str = item["end"].get("dateTime")
+            if not start_str or not end_str:
+                continue  # skip all-day events
+            ev_start = datetime.fromisoformat(start_str.replace("Z", "+00:00")).replace(tzinfo=None)
+            ev_end = datetime.fromisoformat(end_str.replace("Z", "+00:00")).replace(tzinfo=None)
+            events.append({
+                "start": ev_start,
+                "end": ev_end,
+                "summary": item.get("summary", ""),
+                "location": item.get("location", ""),
+            })
+        return events
+
 
 def fetch_webcal_busy(
     url: str, start: datetime, end: datetime

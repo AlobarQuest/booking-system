@@ -103,6 +103,60 @@ END:VCALENDAR"""
     assert intervals == []
 
 
+def test_get_events_for_day_returns_event_list():
+    service = make_service()
+    mock_api_result = {
+        "items": [
+            {
+                "summary": "Doctor Appointment",
+                "location": "123 Medical Dr",
+                "start": {"dateTime": "2025-03-03T10:00:00Z"},
+                "end": {"dateTime": "2025-03-03T11:00:00Z"},
+            },
+            {
+                "summary": "All Day Event",
+                "start": {"date": "2025-03-03"},  # all-day — no dateTime
+                "end": {"date": "2025-03-04"},
+            },
+        ]
+    }
+    with patch.object(service, "_build_service") as mock_build:
+        mock_svc = MagicMock()
+        mock_svc.events().list().execute.return_value = mock_api_result
+        mock_build.return_value = mock_svc
+        events = service.get_events_for_day(
+            "fake-token", "primary",
+            datetime(2025, 3, 3, 0, 0), datetime(2025, 3, 4, 0, 0)
+        )
+    assert len(events) == 1  # all-day event is skipped
+    assert events[0]["summary"] == "Doctor Appointment"
+    assert events[0]["location"] == "123 Medical Dr"
+    assert events[0]["start"] == datetime(2025, 3, 3, 10, 0)
+    assert events[0]["end"] == datetime(2025, 3, 3, 11, 0)
+
+
+def test_get_events_for_day_missing_location_returns_empty_string():
+    service = make_service()
+    mock_api_result = {
+        "items": [
+            {
+                "summary": "Meeting",
+                "start": {"dateTime": "2025-03-03T14:00:00Z"},
+                "end": {"dateTime": "2025-03-03T15:00:00Z"},
+            }
+        ]
+    }
+    with patch.object(service, "_build_service") as mock_build:
+        mock_svc = MagicMock()
+        mock_svc.events().list().execute.return_value = mock_api_result
+        mock_build.return_value = mock_svc
+        events = service.get_events_for_day(
+            "fake-token", "primary",
+            datetime(2025, 3, 3, 0, 0), datetime(2025, 3, 4, 0, 0)
+        )
+    assert events[0]["location"] == ""
+
+
 def test_fetch_webcal_busy_all_day_event():
     from unittest.mock import patch, MagicMock
     from datetime import datetime
