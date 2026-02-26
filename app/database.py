@@ -37,6 +37,10 @@ def init_db():
             ("visibility", "VARCHAR(20) NOT NULL DEFAULT 'default'"),
             ("owner_event_title", "TEXT NOT NULL DEFAULT ''"),
             ("guest_event_title", "TEXT NOT NULL DEFAULT ''"),
+            ("requires_drive_time", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("calendar_window_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("calendar_window_title", "TEXT NOT NULL DEFAULT ''"),
+            ("calendar_window_calendar_id", "TEXT NOT NULL DEFAULT ''"),
         ]:
             if col not in existing:
                 conn.execute(text(f"ALTER TABLE appointment_types ADD COLUMN {col} {definition}"))

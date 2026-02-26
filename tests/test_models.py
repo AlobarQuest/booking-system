@@ -36,6 +36,24 @@ def test_all_tables_create():
     db.close()
 
 
+def test_appointment_type_has_drive_time_fields():
+    from app.models import AppointmentType
+    t = AppointmentType()
+    assert hasattr(t, "requires_drive_time")
+    assert hasattr(t, "calendar_window_enabled")
+    assert hasattr(t, "calendar_window_title")
+    assert hasattr(t, "calendar_window_calendar_id")
+
+
+def test_drive_time_cache_model_exists():
+    from app.models import DriveTimeCache
+    entry = DriveTimeCache()
+    assert hasattr(entry, "origin_address")
+    assert hasattr(entry, "destination_address")
+    assert hasattr(entry, "drive_minutes")
+    assert hasattr(entry, "cached_at")
+
+
 def test_appointment_type_has_title_fields():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

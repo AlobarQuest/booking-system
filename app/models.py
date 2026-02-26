@@ -23,6 +23,10 @@ class AppointmentType(Base):
     color: Mapped[str] = mapped_column(String(20), default="#3b82f6")
     owner_event_title: Mapped[str] = mapped_column(Text, nullable=False, default="")
     guest_event_title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    requires_drive_time: Mapped[bool] = mapped_column(Boolean, default=False)
+    calendar_window_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    calendar_window_title: Mapped[str] = mapped_column(Text, default="")
+    calendar_window_calendar_id: Mapped[str] = mapped_column(Text, default="")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
 
     @property
@@ -94,3 +98,13 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+class DriveTimeCache(Base):
+    __tablename__ = "drive_time_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    origin_address: Mapped[str] = mapped_column(Text, nullable=False)
+    destination_address: Mapped[str] = mapped_column(Text, nullable=False)
+    drive_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    cached_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
