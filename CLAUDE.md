@@ -26,7 +26,7 @@ A personal appointment booking system built with FastAPI + SQLite. It provides a
 | Production | `master` | `https://booking.devonwatkins.com` | `hkw488ggssgcskk0ooc0ksk0` |
 | Preview | `preview` | `https://preview.booking.devonwatkins.com` | `yscogs0wggcgco8g4wwk0o0g` |
 
-**Branch workflow:** work on `preview` → test → merge `preview` → `master` → production.
+**Branch workflow:** create feature branch/worktree from `master` → implement → merge to `master` → push → reset `preview` to `master` for testing.
 
 **Webhook:** both services share the GitHub webhook at `http://178.156.247.239:8000/webhooks/source/github/events/manual` with secret `Red57Chair!01`. Both Coolify services must have that secret saved under Webhooks → GitHub Webhook Secret.
 
@@ -52,7 +52,7 @@ A personal appointment booking system built with FastAPI + SQLite. It provides a
 | `app/config.py` | Pydantic settings — reads from env vars |
 | `app/models.py` | SQLAlchemy models: AppointmentType, Booking, AvailabilityRule, BlockedPeriod, Setting, DriveTimeCache |
 | `app/database.py` | Engine, SessionLocal, `init_db()` with manual column migrations |
-| `app/dependencies.py` | `get_setting()`, `set_setting()`, `require_admin()` |
+| `app/dependencies.py` | `get_setting()`, `set_setting()`, `require_admin()`, `get_csrf_token()`, `validate_csrf_token()`, `require_csrf()` |
 | `app/routers/slots.py` | GET /slots — computes available time slots |
 | `app/routers/booking.py` | GET/POST /book — public booking flow |
 | `app/routers/admin.py` | All /admin/* routes |
@@ -114,6 +114,7 @@ Both redirect URIs must also be registered in Google Cloud Console → APIs & Se
 - **Preview environment** — `preview` branch auto-deploys to `https://preview.booking.devonwatkins.com` with isolated DB; see Environments section above
 - **Booking UX** — "Schedule Tour" green button replaces whole-card click; card list collapses and shows selected-type banner with full card content cloned into it; "← Change" to go back
 - **Rental Application Link** — `rental_application_url` field on appointment types; "Rental Application" button on booking page opens URL in new tab
+- **Security remediation** — CSRF tokens on all POST forms (`require_csrf` dependency + session-backed `_csrf` hidden field); rate-limited admin login/setup (5/min); security response headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy); HTML-escaped guest data in emails; `javascript:` / non-HTTP URL scheme rejection on listing/rental URLs; OAuth state parameter validation
 
 ---
 
