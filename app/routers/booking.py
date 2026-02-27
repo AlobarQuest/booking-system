@@ -15,6 +15,8 @@ from app.services.booking import create_booking
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+from app.dependencies import get_csrf_token as _get_csrf_token
+templates.env.globals["csrf_token"] = _get_csrf_token
 
 
 @router.get("/uploads/{filename}")

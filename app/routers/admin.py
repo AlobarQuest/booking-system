@@ -17,6 +17,8 @@ from app.services.calendar import CalendarService
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["enumerate"] = enumerate
+from app.dependencies import get_csrf_token as _get_csrf_token
+templates.env.globals["csrf_token"] = _get_csrf_token
 AuthDep = Depends(require_admin)
 
 
