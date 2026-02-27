@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_setting, set_setting
+from app.dependencies import get_setting, set_setting, require_csrf
 from app.limiter import limiter
 
 router = APIRouter()
@@ -25,6 +25,7 @@ def login(
     request: Request,
     password: str = Form(...),
     db: Session = Depends(get_db),
+    _csrf_ok: None = Depends(require_csrf),
 ):
     stored_hash = get_setting(db, "admin_password_hash", "")
     if not stored_hash:
@@ -59,6 +60,7 @@ def setup(
     password: str = Form(...),
     confirm: str = Form(...),
     db: Session = Depends(get_db),
+    _csrf_ok: None = Depends(require_csrf),
 ):
     if get_setting(db, "admin_password_hash"):
         return RedirectResponse("/admin/login", status_code=302)

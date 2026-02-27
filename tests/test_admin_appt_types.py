@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
-from app.dependencies import require_admin
+from app.dependencies import require_admin, require_csrf
 from app.models import AppointmentType
 
 
@@ -38,8 +38,9 @@ def admin_client(tmp_path, monkeypatch):
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    # Bypass admin auth via dependency_overrides (the correct FastAPI way)
+    # Bypass admin auth and CSRF via dependency_overrides (the correct FastAPI way)
     app.dependency_overrides[require_admin] = lambda: True
+    app.dependency_overrides[require_csrf] = lambda: None
 
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
         yield c, TestSession, tmp_path

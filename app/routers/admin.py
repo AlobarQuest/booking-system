@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.dependencies import get_setting, require_admin, set_setting
+from app.dependencies import get_setting, require_admin, require_csrf, set_setting
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
 from app.services.calendar import CalendarService
 
@@ -104,6 +104,7 @@ async def create_appt_type(
     remove_photo: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     t = AppointmentType(
         name=name, description=description, duration_minutes=duration_minutes,
@@ -173,6 +174,7 @@ async def update_appt_type(
     photo: UploadFile | None = File(None),
     remove_photo: str = Form(""),
     db: Session = Depends(get_db), _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     t = db.query(AppointmentType).filter_by(id=type_id).first()
     if t:
@@ -219,7 +221,8 @@ async def update_appt_type(
 
 @router.post("/appointment-types/{type_id}/toggle")
 def toggle_appt_type(
-    request: Request, type_id: int, db: Session = Depends(get_db), _=AuthDep
+    request: Request, type_id: int, db: Session = Depends(get_db), _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     t = db.query(AppointmentType).filter_by(id=type_id).first()
     if t:
@@ -251,6 +254,7 @@ def create_rule(
     end_time: str = Form(...),
     db: Session = Depends(get_db),
     _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     db.add(AvailabilityRule(day_of_week=day_of_week, start_time=start_time, end_time=end_time, active=True))
     db.commit()
@@ -259,7 +263,10 @@ def create_rule(
 
 
 @router.post("/availability/rules/{rule_id}/delete")
-def delete_rule(request: Request, rule_id: int, db: Session = Depends(get_db), _=AuthDep):
+def delete_rule(
+    request: Request, rule_id: int, db: Session = Depends(get_db), _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
+):
     rule = db.query(AvailabilityRule).filter_by(id=rule_id).first()
     if rule:
         db.delete(rule)
@@ -276,6 +283,7 @@ def create_block(
     reason: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     db.add(BlockedPeriod(
         start_datetime=datetime.fromisoformat(start_datetime),
@@ -289,7 +297,8 @@ def create_block(
 
 @router.post("/availability/blocks/{block_id}/delete")
 def delete_block(
-    request: Request, block_id: int, db: Session = Depends(get_db), _=AuthDep
+    request: Request, block_id: int, db: Session = Depends(get_db), _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     b = db.query(BlockedPeriod).filter_by(id=block_id).first()
     if b:
@@ -306,6 +315,7 @@ def save_availability_settings(
     max_future_days: str = Form(...),
     db: Session = Depends(get_db),
     _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     set_setting(db, "min_advance_hours", min_advance_hours)
     set_setting(db, "max_future_days", max_future_days)
@@ -338,7 +348,8 @@ def bookings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
 
 @router.post("/bookings/{booking_id}/cancel")
 def cancel_booking_route(
-    request: Request, booking_id: int, db: Session = Depends(get_db), _=AuthDep
+    request: Request, booking_id: int, db: Session = Depends(get_db), _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     from app.services.booking import cancel_booking
     booking = db.query(Booking).filter_by(id=booking_id).first()
@@ -423,6 +434,7 @@ def save_settings(
     home_address: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     set_setting(db, "owner_name", owner_name)
     set_setting(db, "notify_email", notify_email)
@@ -440,6 +452,7 @@ def change_password(
     confirm: str = Form(...),
     db: Session = Depends(get_db),
     _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     if password != confirm:
         _flash(request, "Passwords do not match.", "error")
@@ -458,6 +471,7 @@ def add_conflict_calendar(
     cal_name: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     import json as _json
     raw = get_setting(db, "conflict_calendars", "[]")
@@ -475,7 +489,8 @@ def add_conflict_calendar(
 
 @router.post("/settings/conflict-calendars/{index}/delete")
 def delete_conflict_calendar(
-    request: Request, index: int, db: Session = Depends(get_db), _=AuthDep
+    request: Request, index: int, db: Session = Depends(get_db), _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     import json as _json
     raw = get_setting(db, "conflict_calendars", "[]")
@@ -498,6 +513,7 @@ def save_email_templates(
     email_guest_cancellation: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
 ):
     set_setting(db, "email_guest_confirmation", email_guest_confirmation)
     set_setting(db, "email_admin_alert", email_admin_alert)

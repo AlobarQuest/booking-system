@@ -1,7 +1,7 @@
 import hmac
 import secrets
 
-from fastapi import Depends, Form as _Form, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,8 @@ def validate_csrf_token(request: Request, token: str) -> None:
         raise HTTPException(status_code=403, detail="CSRF token invalid or missing.")
 
 
-async def require_csrf(request: Request, _csrf: str = _Form("")) -> None:
+async def require_csrf(request: Request) -> None:
     """FastAPI dependency. Validates the _csrf form field against the session token."""
-    validate_csrf_token(request, _csrf)
+    form_data = await request.form()
+    token = str(form_data.get("_csrf", ""))
+    validate_csrf_token(request, token)

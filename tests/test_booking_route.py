@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.database import Base, get_db
 from app.main import app
 from app.models import AppointmentType
+from app.dependencies import require_csrf
 
 
 def setup_client():
@@ -35,6 +36,7 @@ def setup_client():
             s.close()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[require_csrf] = lambda: None
     return TestClient(app), Session
 
 

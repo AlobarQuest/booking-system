@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.dependencies import get_setting
+from app.dependencies import get_setting, require_csrf
 from app.limiter import limiter
 from app.models import AppointmentType, Booking
 from app.services.booking import create_booking
@@ -88,6 +88,7 @@ def booking_form(
 async def submit_booking(
     request: Request,
     db: Session = Depends(get_db),
+    _csrf_ok: None = Depends(require_csrf),
 ):
     form_data = await request.form()
     type_id_str = form_data.get("type_id", "")

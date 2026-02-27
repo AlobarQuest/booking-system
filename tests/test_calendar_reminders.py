@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 from app.services.calendar import CalendarService
+from app.dependencies import require_csrf
 
 
 def make_cal():
@@ -103,6 +104,7 @@ def test_submit_booking_passes_disable_reminders_when_owner_reminders_disabled()
             s.close()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[require_csrf] = lambda: None
 
     mock_settings = Settings(
         google_client_id="fake-client-id",
@@ -173,6 +175,7 @@ def test_submit_booking_does_not_disable_reminders_when_owner_reminders_enabled(
             s.close()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[require_csrf] = lambda: None
 
     mock_settings = Settings(
         google_client_id="fake-client-id",
