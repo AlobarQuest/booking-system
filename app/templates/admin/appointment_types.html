@@ -92,6 +92,12 @@
              placeholder="https://example.com/listing-123">
     </label>
 
+    <label>Rental Application Link
+      <input type="url" name="rental_application_url"
+             value="{{ edit_type.rental_application_url if edit_type else '' }}"
+             placeholder="https://example.com/apply">
+    </label>
+
     <label>Property Photo
       {% if edit_type and edit_type.photo_filename %}
       <div style="margin-bottom:.5rem;">

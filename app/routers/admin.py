@@ -86,6 +86,7 @@ async def create_appt_type(
     calendar_window_title: str = Form(""),
     calendar_window_calendar_id: str = Form(""),
     listing_url: str = Form(""),
+    rental_application_url: str = Form(""),
     rental_requirements_json: str = Form("[]"),
     owner_reminders_enabled: str = Form("false"),
     photo: UploadFile | None = File(None),
@@ -103,6 +104,7 @@ async def create_appt_type(
         calendar_window_title=calendar_window_title,
         calendar_window_calendar_id=calendar_window_calendar_id,
         listing_url=listing_url,
+        rental_application_url=rental_application_url,
         owner_reminders_enabled=(owner_reminders_enabled == "true"),
         active=True,
     )
@@ -154,6 +156,7 @@ async def update_appt_type(
     calendar_window_title: str = Form(""),
     calendar_window_calendar_id: str = Form(""),
     listing_url: str = Form(""),
+    rental_application_url: str = Form(""),
     rental_requirements_json: str = Form("[]"),
     owner_reminders_enabled: str = Form("false"),
     photo: UploadFile | None = File(None),
@@ -174,6 +177,7 @@ async def update_appt_type(
         t.calendar_window_title = calendar_window_title
         t.calendar_window_calendar_id = calendar_window_calendar_id
         t.listing_url = listing_url
+        t.rental_application_url = rental_application_url
         t.owner_reminders_enabled = (owner_reminders_enabled == "true")
         try:
             t.rental_requirements = json.loads(rental_requirements_json)

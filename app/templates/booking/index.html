@@ -28,11 +28,15 @@
           {% if appt.description %}<span>{{ appt.description }}</span>{% endif %}
           <span class="card-duration">&#9679; {{ appt.duration_minutes }} min</span>
         </div>
-        {% if appt.listing_url or appt.rental_requirements %}
+        {% if appt.listing_url or appt.rental_application_url or appt.rental_requirements %}
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;">
           {% if appt.listing_url %}
           <a href="{{ appt.listing_url }}" target="_blank" rel="noopener noreferrer"
              class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .75rem;">View Listing</a>
+          {% endif %}
+          {% if appt.rental_application_url %}
+          <a href="{{ appt.rental_application_url }}" target="_blank" rel="noopener noreferrer"
+             class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .75rem;">Rental Application</a>
           {% endif %}
           {% if appt.rental_requirements %}
           <button type="button" class="btn btn-secondary"

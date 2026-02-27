@@ -29,6 +29,7 @@ class AppointmentType(Base):
     calendar_window_calendar_id: Mapped[str] = mapped_column(Text, default="")
     photo_filename: Mapped[str] = mapped_column(Text, default="")
     listing_url: Mapped[str] = mapped_column(Text, default="")
+    rental_application_url: Mapped[str] = mapped_column(Text, default="")
     _rental_requirements: Mapped[str] = mapped_column("rental_requirements", Text, default="[]")
     owner_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")

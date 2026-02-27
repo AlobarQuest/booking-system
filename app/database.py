@@ -43,6 +43,7 @@ def init_db():
             ("calendar_window_calendar_id", "TEXT NOT NULL DEFAULT ''"),
             ("photo_filename", "TEXT NOT NULL DEFAULT ''"),
             ("listing_url", "TEXT NOT NULL DEFAULT ''"),
+            ("rental_application_url", "TEXT NOT NULL DEFAULT ''"),
             ("rental_requirements", "TEXT NOT NULL DEFAULT '[]'"),
             ("owner_reminders_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ]:
