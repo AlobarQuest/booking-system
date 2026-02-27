@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_setting, set_setting
+from app.limiter import limiter
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -17,6 +18,7 @@ def login_page(request: Request):
 
 
 @router.post("/admin/login")
+@limiter.limit("5/minute")
 def login(
     request: Request,
     password: str = Form(...),
@@ -49,6 +51,7 @@ def setup_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/admin/setup")
+@limiter.limit("5/minute")
 def setup(
     request: Request,
     password: str = Form(...),
