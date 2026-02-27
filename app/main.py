@@ -30,6 +30,15 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=28800)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 app.include_router(booking.router)
 app.include_router(slots.router)
 app.include_router(auth.router)
