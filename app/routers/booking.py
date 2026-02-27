@@ -205,6 +205,7 @@ async def submit_booking(
                 end_dt=end_dt,
                 custom_responses=custom_responses,
                 owner_name=owner_name,
+                template=get_setting(db, "email_guest_confirmation", ""),
             )
         except Exception:
             pass
@@ -221,6 +222,7 @@ async def submit_booking(
                     start_dt=start_dt,
                     notes=notes,
                     custom_responses=custom_responses,
+                    template=get_setting(db, "email_admin_alert", ""),
                 )
             except Exception:
                 pass

@@ -355,6 +355,7 @@ def cancel_booking_route(
                 guest_name=booking.guest_name,
                 appt_type_name=booking.appointment_type.name,
                 start_dt=booking.start_datetime,
+                template=get_setting(db, "email_guest_cancellation", ""),
             )
         except Exception:
             pass
@@ -390,6 +391,9 @@ def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         "home_address": get_setting(db, "home_address", ""),
         "google_authorized": cal.is_authorized(refresh_token),
         "conflict_cals": conflict_cals,
+        "email_guest_confirmation": get_setting(db, "email_guest_confirmation", ""),
+        "email_admin_alert": get_setting(db, "email_admin_alert", ""),
+        "email_guest_cancellation": get_setting(db, "email_guest_cancellation", ""),
         "flash": _get_flash(request),
     })
 
@@ -468,6 +472,22 @@ def delete_conflict_calendar(
         cals.pop(index)
         set_setting(db, "conflict_calendars", _json.dumps(cals))
         _flash(request, "Conflict calendar removed.")
+    return RedirectResponse("/admin/settings", status_code=302)
+
+
+@router.post("/settings/email-templates")
+def save_email_templates(
+    request: Request,
+    email_guest_confirmation: str = Form(""),
+    email_admin_alert: str = Form(""),
+    email_guest_cancellation: str = Form(""),
+    db: Session = Depends(get_db),
+    _=AuthDep,
+):
+    set_setting(db, "email_guest_confirmation", email_guest_confirmation)
+    set_setting(db, "email_admin_alert", email_admin_alert)
+    set_setting(db, "email_guest_cancellation", email_guest_cancellation)
+    _flash(request, "Email templates saved.")
     return RedirectResponse("/admin/settings", status_code=302)
 
 
