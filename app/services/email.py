@@ -50,13 +50,22 @@ def send_guest_confirmation(
         f"<p><strong>{k}:</strong> {v}</p>"
         for k, v in custom_responses.items() if v
     )
-    html = (template or _GUEST_CONFIRMATION_DEFAULT).format(
-        guest_name=guest_name,
-        appt_type=appt_type_name,
-        date_time=_format_dt(start_dt),
-        owner_name=owner_name,
-        custom_fields=custom_html,
-    )
+    try:
+        html = (template or _GUEST_CONFIRMATION_DEFAULT).format(
+            guest_name=guest_name,
+            appt_type=appt_type_name,
+            date_time=_format_dt(start_dt),
+            owner_name=owner_name,
+            custom_fields=custom_html,
+        )
+    except (KeyError, ValueError):
+        html = _GUEST_CONFIRMATION_DEFAULT.format(
+            guest_name=guest_name,
+            appt_type=appt_type_name,
+            date_time=_format_dt(start_dt),
+            owner_name=owner_name,
+            custom_fields=custom_html,
+        )
     resend.Emails.send({
         "from": from_email,
         "to": [guest_email],
@@ -83,15 +92,26 @@ def send_admin_alert(
         f"<p><strong>{k}:</strong> {v}</p>"
         for k, v in custom_responses.items() if v
     )
-    html = (template or _ADMIN_ALERT_DEFAULT).format(
-        guest_name=guest_name,
-        guest_email=guest_email,
-        guest_phone=guest_phone or "not provided",
-        appt_type=appt_type_name,
-        date_time=_format_dt(start_dt),
-        notes=notes or "none",
-        custom_fields=custom_html,
-    )
+    try:
+        html = (template or _ADMIN_ALERT_DEFAULT).format(
+            guest_name=guest_name,
+            guest_email=guest_email,
+            guest_phone=guest_phone or "not provided",
+            appt_type=appt_type_name,
+            date_time=_format_dt(start_dt),
+            notes=notes or "none",
+            custom_fields=custom_html,
+        )
+    except (KeyError, ValueError):
+        html = _ADMIN_ALERT_DEFAULT.format(
+            guest_name=guest_name,
+            guest_email=guest_email,
+            guest_phone=guest_phone or "not provided",
+            appt_type=appt_type_name,
+            date_time=_format_dt(start_dt),
+            notes=notes or "none",
+            custom_fields=custom_html,
+        )
     resend.Emails.send({
         "from": from_email,
         "to": [notify_email],
@@ -110,11 +130,18 @@ def send_cancellation_notice(
     template: str = "",
 ):
     resend.api_key = api_key
-    html = (template or _CANCELLATION_DEFAULT).format(
-        guest_name=guest_name,
-        appt_type=appt_type_name,
-        date_time=_format_dt(start_dt),
-    )
+    try:
+        html = (template or _CANCELLATION_DEFAULT).format(
+            guest_name=guest_name,
+            appt_type=appt_type_name,
+            date_time=_format_dt(start_dt),
+        )
+    except (KeyError, ValueError):
+        html = _CANCELLATION_DEFAULT.format(
+            guest_name=guest_name,
+            appt_type=appt_type_name,
+            date_time=_format_dt(start_dt),
+        )
     resend.Emails.send({
         "from": from_email,
         "to": [guest_email],

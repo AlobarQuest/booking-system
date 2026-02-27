@@ -88,3 +88,60 @@ def test_send_cancellation_uses_custom_template():
         )
     assert "Dave" in captured["html"]
     assert "Cancelled" in captured["html"]
+
+
+def test_guest_confirmation_falls_back_to_default_on_bad_placeholder():
+    """Custom template with unknown placeholder falls back to default, not raise."""
+    from unittest.mock import MagicMock
+    with patch("resend.Emails.send") as mock_send:
+        send_guest_confirmation(
+            api_key="test",
+            from_email="from@test.com",
+            guest_email="guest@test.com",
+            guest_name="Alice",
+            appt_type_name="Showing",
+            start_dt=datetime(2026, 3, 1, 10, 0),
+            end_dt=datetime(2026, 3, 1, 11, 0),
+            custom_responses={},
+            owner_name="Bob",
+            template="Hello {unknown_placeholder}!",
+        )
+    assert mock_send.called
+    html = mock_send.call_args[0][0]["html"]
+    assert "Alice" in html  # default template rendered
+
+
+def test_admin_alert_falls_back_to_default_on_bad_placeholder():
+    with patch("resend.Emails.send") as mock_send:
+        send_admin_alert(
+            api_key="test",
+            from_email="from@test.com",
+            notify_email="admin@test.com",
+            guest_name="Alice",
+            guest_email="guest@test.com",
+            guest_phone="",
+            appt_type_name="Showing",
+            start_dt=datetime(2026, 3, 1, 10, 0),
+            notes="",
+            custom_responses={},
+            template="Bad {bogus} template",
+        )
+    assert mock_send.called
+    html = mock_send.call_args[0][0]["html"]
+    assert "Alice" in html
+
+
+def test_cancellation_falls_back_to_default_on_bad_placeholder():
+    with patch("resend.Emails.send") as mock_send:
+        send_cancellation_notice(
+            api_key="test",
+            from_email="from@test.com",
+            guest_email="guest@test.com",
+            guest_name="Alice",
+            appt_type_name="Showing",
+            start_dt=datetime(2026, 3, 1, 10, 0),
+            template="Bad {nope} template",
+        )
+    assert mock_send.called
+    html = mock_send.call_args[0][0]["html"]
+    assert "Alice" in html
