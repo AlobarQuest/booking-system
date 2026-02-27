@@ -15,9 +15,20 @@ A personal appointment booking system built with FastAPI + SQLite. It provides a
 - **Host:** Hetzner CX22 VPS at `178.156.247.239`
 - **Platform:** Coolify (self-hosted PaaS) — dashboard at `http://178.156.247.239:8000`
 - **SSH:** `ssh hetzner-coolify` (key at `~/.ssh/hetzner_ed25519`, passphrase in Bitwarden)
-- **Auto-deploy:** Push to `master` branch triggers Coolify webhook → redeploy
-- **Database:** SQLite at `/data/booking.db` inside the container (Coolify volume mount)
+- **Auto-deploy:** Push to `master` → production auto-deploys; push to `preview` → preview auto-deploys
+- **Database:** SQLite at `/data/booking.db` inside the container (Coolify volume mount — separate volume per service)
 - **Previous host:** Fly.io (decommissioned — left as-is, no active machines)
+
+### Environments
+
+| Environment | Branch | URL | Coolify app ID |
+|-------------|--------|-----|----------------|
+| Production | `master` | `https://booking.devonwatkins.com` | `hkw488ggssgcskk0ooc0ksk0` |
+| Preview | `preview` | `https://preview.booking.devonwatkins.com` | `yscogs0wggcgco8g4wwk0o0g` |
+
+**Branch workflow:** work on `preview` → test → merge `preview` → `master` → production.
+
+**Webhook:** both services share the GitHub webhook at `http://178.156.247.239:8000/webhooks/source/github/events/manual` with secret `Red57Chair!01`. Both Coolify services must have that secret saved under Webhooks → GitHub Webhook Secret.
 
 ---
 
@@ -75,16 +86,18 @@ New columns added here **must also** be added as `mapped_column` fields in `app/
 
 ## Environment Variables (set in Coolify)
 
-| Variable | Purpose |
-|----------|---------|
-| `SECRET_KEY` | Session signing |
-| `GOOGLE_CLIENT_ID` | Google OAuth |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth |
-| `GOOGLE_REDIRECT_URI` | `https://booking.devonwatkins.com/admin/auth/callback` |
-| `GOOGLE_REDIRECT_URI` (calendar) | `https://booking.devonwatkins.com/admin/google/callback` |
-| `DATABASE_URL` | `sqlite:////data/booking.db` |
-| `ADMIN_EMAIL` | Admin login email |
-| `GOOGLE_MAPS_API_KEY` | Drive time calculation (Distance Matrix API) — **needs to be set** |
+| Variable | Production value | Preview value |
+|----------|-----------------|---------------|
+| `SECRET_KEY` | *(random)* | *(different random)* |
+| `GOOGLE_CLIENT_ID` | same | same |
+| `GOOGLE_CLIENT_SECRET` | same | same |
+| `OAUTH_REDIRECT_URI` | `https://booking.devonwatkins.com/admin/auth/callback` | `https://preview.booking.devonwatkins.com/admin/auth/callback` |
+| `GOOGLE_REDIRECT_URI` | `https://booking.devonwatkins.com/admin/google/callback` | `https://preview.booking.devonwatkins.com/admin/google/callback` |
+| `DATABASE_URL` | `sqlite:////data/booking.db` | `sqlite:////data/booking.db` *(separate volume)* |
+| `ADMIN_EMAIL` | `devon.watkins@gmail.com` | same |
+| `GOOGLE_MAPS_API_KEY` | *(set)* | same |
+
+Both redirect URIs must also be registered in Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 client → Authorized redirect URIs.
 
 ---
 
@@ -95,32 +108,12 @@ New columns added here **must also** be added as `mapped_column` fields in `app/
 - **Issue #3** — Separate owner/guest calendar event titles per appointment type
 - **Issue #4** — Multi-calendar conflict checking (webcal/ICS feeds + extra Google Calendars)
 - **Issue #5** — Modern public booking UI redesign (Inter font, gradient header, step indicator)
-- **Coolify migration** — Fully migrated from Fly.io to Hetzner + Coolify. App is live at `https://booking.devonwatkins.com` with auto-deploy from GitHub.
-
----
-
-## Current Work: Drive Time + Calendar Windows
-
-**Plan:** `docs/plans/2026-02-26-drive-time-and-calendar-windows.md`
-**Design:** `docs/plans/2026-02-26-drive-time-and-calendar-windows-design.md`
-
-### Feature 1: Drive Time Buffers
-Automatically block travel time before appointments based on the preceding event's location. Uses Google Maps Distance Matrix API with a `DriveTimeCache` DB table (30-day TTL). Looks back up to 1 hour for a preceding Google Calendar event with a location; falls back to admin's home address.
-
-### Feature 2: Calendar-Window Availability
-Restrict an appointment type to only be bookable during specific Google Calendar events matching a configured title (exact, case-insensitive). Those events may be marked "busy" on the calendar (intentionally) — the app treats them as available windows and skips them when building the busy interval list.
-
-### Plan Tasks (8 total)
-1. Data model + migrations — `DriveTimeCache` model, 4 new `AppointmentType` fields
-2. Config — `GOOGLE_MAPS_API_KEY` setting
-3. Drive time service — `app/services/drive_time.py`
-4. Calendar service — `get_events_for_day()` method
-5. Availability service refactor — extract `_build_free_windows()`, add `intersect_windows()`, `trim_windows_for_drive_time()`, `filter_by_advance_notice()`
-6. Slots endpoint — integrate both features into `app/routers/slots.py`
-7. Admin UI — home address field in settings
-8. Admin UI — drive time + calendar window fields on appointment type form
-
-**To execute:** Use `superpowers:executing-plans` skill, follow `docs/plans/2026-02-26-drive-time-and-calendar-windows.md` task by task, TDD (write failing test → implement → pass → commit).
+- **Coolify migration** — Migrated from Fly.io to Hetzner + Coolify; HTTPS via Let's Encrypt (Traefik)
+- **Issues #6 & #7** — Photo upload per appointment type, listing URL, rental requirements modal, calendar notification toggle (`owner_reminders_enabled`), editable email templates in admin (3 templates with fallback to defaults)
+- **Drive time + calendar windows** — `DriveTimeCache` table, Google Maps Distance Matrix integration, calendar-window availability mode (restrict slots to specific calendar event windows)
+- **Preview environment** — `preview` branch auto-deploys to `https://preview.booking.devonwatkins.com` with isolated DB; see Environments section above
+- **Booking UX** — "Schedule Tour" green button replaces whole-card click; card list collapses and shows selected-type banner with full card content cloned into it; "← Change" to go back
+- **Rental Application Link** — `rental_application_url` field on appointment types; "Rental Application" button on booking page opens URL in new tab
 
 ---
 
