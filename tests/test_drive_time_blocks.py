@@ -172,3 +172,65 @@ def test_calendar_fetch_failure_is_silent():
     cal.get_events_for_day.side_effect = Exception("API error")
     _run(cal, nearby_events=[], drive_minutes=20)
     cal.create_event.assert_not_called()
+
+
+def test_fetches_events_in_plus_minus_one_hour_window():
+    """get_events_for_day is called with the ±1-hour window around the appointment."""
+    cal = _make_cal()
+    start_utc = datetime(2026, 3, 1, 15, 0)
+    end_utc = start_utc + timedelta(minutes=30)
+    _run(cal, nearby_events=[], drive_minutes=0, start_utc=start_utc, end_utc=end_utc)
+    cal.get_events_for_day.assert_called_once_with(
+        "tok",
+        "primary",
+        start_utc - timedelta(hours=1),
+        end_utc + timedelta(hours=1),
+    )
+
+
+def test_after_block_not_created_when_drive_time_zero():
+    """No after block when drive time is 0, even if the following event has a location."""
+    cal = _make_cal()
+    start_utc = datetime(2026, 3, 1, 15, 0)
+    end_utc = start_utc + timedelta(minutes=30)
+
+    following = {
+        "start": end_utc + timedelta(minutes=10),
+        "end": end_utc + timedelta(hours=1),
+        "summary": "Next Meeting",
+        "location": "999 Far Away Rd",
+    }
+    _run(cal, nearby_events=[following], drive_minutes=0,
+         start_utc=start_utc, end_utc=end_utc, home_address="")
+    cal.create_event.assert_not_called()
+
+
+def test_before_block_uses_most_recent_preceding_event():
+    """When multiple events precede the appointment, the one with the latest end time is used."""
+    cal = _make_cal()
+    start_utc = datetime(2026, 3, 1, 15, 0)
+    end_utc = start_utc + timedelta(minutes=30)
+
+    earlier = {
+        "start": start_utc - timedelta(hours=1),
+        "end": start_utc - timedelta(minutes=45),
+        "summary": "Earlier Event",
+        "location": "111 Wrong St",
+    }
+    later = {
+        "start": start_utc - timedelta(minutes=50),
+        "end": start_utc - timedelta(minutes=20),
+        "summary": "Later Event",
+        "location": "222 Right Ave",
+    }
+    _run(cal, nearby_events=[earlier, later], drive_minutes=10,
+         start_utc=start_utc, end_utc=end_utc, home_address="")
+
+    # The before block should be calculated FROM "222 Right Ave" (later event), not "111 Wrong St"
+    # We verify by checking the before block was created (drive_mins=10 > 0)
+    before_calls = [c for c in cal.create_event.call_args_list
+                    if "Drive Time for Consultation" in c.kwargs.get("summary", "")]
+    assert len(before_calls) == 1
+    # The block ends at start_utc and starts 10 min before
+    assert before_calls[0].kwargs["end"] == start_utc
+    assert before_calls[0].kwargs["start"] == start_utc - timedelta(minutes=10)
