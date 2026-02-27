@@ -37,7 +37,7 @@
           {% if appt.rental_requirements %}
           <button type="button" class="btn btn-secondary"
                   style="font-size:.8rem;padding:.3rem .75rem;"
-                  onclick="event.stopPropagation(); showRequirements({{ appt.rental_requirements | tojson }})">View Requirements</button>
+                  onclick="event.stopPropagation(); showRequirements({{ appt.id }})">View Requirements</button>
           {% endif %}
         </div>
         {% endif %}
@@ -80,6 +80,13 @@
 <div id="booking-form-area" class="section"></div>
 
 <script>
+var _apptReqs = {
+  {% for appt in appointment_types %}
+  {% if appt.rental_requirements %}
+  {{ appt.id }}: {{ appt.rental_requirements | tojson }},
+  {% endif %}
+  {% endfor %}
+};
 function selectType(id, el) {
   document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
@@ -95,7 +102,8 @@ function selectSlot(el) {
   el.classList.add('selected');
   document.getElementById('step3').classList.add('active');
 }
-function showRequirements(reqs) {
+function showRequirements(id) {
+  const reqs = _apptReqs[id] || [];
   document.getElementById('req-modal-list').innerHTML =
     reqs.map(r => '<li>' + r + '</li>').join('');
   document.getElementById('req-modal').style.display = 'flex';
