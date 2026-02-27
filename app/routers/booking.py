@@ -19,11 +19,11 @@ templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/uploads/{filename}")
 def serve_upload(filename: str):
-    # Prevent path traversal
-    if "/" in filename or "\\" in filename or filename.startswith("."):
-        raise HTTPException(status_code=400, detail="Invalid filename")
     settings = get_settings()
-    path = os.path.join(settings.upload_dir, filename)
+    upload_dir = os.path.realpath(settings.upload_dir)
+    path = os.path.realpath(os.path.join(upload_dir, filename))
+    if not path.startswith(upload_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path)
