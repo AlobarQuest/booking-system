@@ -20,7 +20,7 @@
 
 <div id="type-selection">
   {% for appt in appointment_types %}
-  <div class="card" onclick="selectType({{ appt.id }}, this)">
+  <div class="card static">
     <div style="display:flex;gap:1rem;align-items:flex-start;">
       <div style="flex:1;min-width:0;">
         <h3>{{ appt.name }}</h3>
@@ -29,7 +29,7 @@
           <span class="card-duration">&#9679; {{ appt.duration_minutes }} min</span>
         </div>
         {% if appt.listing_url or appt.rental_requirements %}
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;" onclick="event.stopPropagation()">
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;">
           {% if appt.listing_url %}
           <a href="{{ appt.listing_url }}" target="_blank" rel="noopener noreferrer"
              class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .75rem;">View Listing</a>
@@ -37,10 +37,13 @@
           {% if appt.rental_requirements %}
           <button type="button" class="btn btn-secondary"
                   style="font-size:.8rem;padding:.3rem .75rem;"
-                  onclick="event.stopPropagation(); showRequirements({{ appt.id }})">View Requirements</button>
+                  onclick="showRequirements({{ appt.id }})">View Requirements</button>
           {% endif %}
         </div>
         {% endif %}
+        <button type="button" class="btn btn-schedule"
+                style="margin-top:1rem;width:100%;"
+                onclick="selectType({{ appt.id }}, {{ appt.name | tojson }})">Schedule Tour</button>
       </div>
       {% if appt.photo_filename %}
       <img src="/uploads/{{ appt.photo_filename }}" alt="{{ appt.name }}"
@@ -49,6 +52,18 @@
     </div>
   </div>
   {% endfor %}
+</div>
+
+<!-- Selected type banner (shown after clicking Schedule Tour) -->
+<div id="selected-type-banner" style="display:none;border-color:#2563eb;background:#eff6ff;" class="card static">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+    <div>
+      <div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#2563eb;margin-bottom:.2rem;">Scheduling</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#0f172a;" id="selected-type-name"></div>
+    </div>
+    <button type="button" class="btn btn-secondary" style="font-size:.8rem;padding:.35rem .85rem;white-space:nowrap;"
+            onclick="changeType()">&#8592; Change</button>
+  </div>
 </div>
 
 <!-- Requirements modal -->
@@ -87,15 +102,28 @@ var _apptReqs = {
   {% endif %}
   {% endfor %}
 };
-function selectType(id, el) {
-  document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
+function selectType(id, name) {
   document.getElementById('type_id_input').value = id;
+  document.getElementById('selected-type-name').textContent = name;
+  document.getElementById('type-selection').style.display = 'none';
+  document.getElementById('selected-type-banner').style.display = 'block';
   document.getElementById('date-picker-area').style.display = 'block';
   document.getElementById('slots-area').innerHTML = '';
   document.getElementById('booking-form-area').innerHTML = '';
   document.getElementById('date-input').value = '';
   document.getElementById('step2').classList.add('active');
+  document.getElementById('selected-type-banner').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function changeType() {
+  document.getElementById('type-selection').style.display = 'block';
+  document.getElementById('selected-type-banner').style.display = 'none';
+  document.getElementById('date-picker-area').style.display = 'none';
+  document.getElementById('slots-area').innerHTML = '';
+  document.getElementById('booking-form-area').innerHTML = '';
+  document.getElementById('date-input').value = '';
+  document.getElementById('type_id_input').value = '';
+  document.getElementById('step2').classList.remove('active');
+  document.getElementById('step3').classList.remove('active');
 }
 function selectSlot(el) {
   document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));

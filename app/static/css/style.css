@@ -176,6 +176,8 @@ textarea { resize: vertical; }
 .btn-danger:hover { background: #dc2626; }
 .btn-secondary { background: #f1f5f9; color: #374151; border: 1px solid #e2e8f0; }
 .btn-secondary:hover { background: #e2e8f0; }
+.btn-schedule { background: #059669; color: #fff; }
+.btn-schedule:hover { background: #047857; box-shadow: 0 4px 12px rgba(5,150,105,.3); }
 
 /* Confirmation */
 .confirmation-box {
