@@ -1,5 +1,6 @@
 import resend
 from datetime import datetime
+from html import escape
 
 
 def _format_dt(dt: datetime) -> str:
@@ -48,23 +49,23 @@ def send_guest_confirmation(
 ):
     resend.api_key = api_key
     custom_html = "".join(
-        f"<p><strong>{k}:</strong> {v}</p>"
+        f"<p><strong>{escape(str(k))}:</strong> {escape(str(v))}</p>"
         for k, v in custom_responses.items() if v
     )
     try:
         html = (template or _GUEST_CONFIRMATION_DEFAULT).format(
-            guest_name=guest_name,
-            appt_type=appt_type_name,
+            guest_name=escape(guest_name),
+            appt_type=escape(appt_type_name),
             date_time=_format_dt(start_dt),
-            owner_name=owner_name,
+            owner_name=escape(owner_name),
             custom_fields=custom_html,
         )
     except (KeyError, ValueError, IndexError):
         html = _GUEST_CONFIRMATION_DEFAULT.format(
-            guest_name=guest_name,
-            appt_type=appt_type_name,
+            guest_name=escape(guest_name),
+            appt_type=escape(appt_type_name),
             date_time=_format_dt(start_dt),
-            owner_name=owner_name,
+            owner_name=escape(owner_name),
             custom_fields=custom_html,
         )
     resend.Emails.send({
@@ -90,27 +91,27 @@ def send_admin_alert(
 ):
     resend.api_key = api_key
     custom_html = "".join(
-        f"<p><strong>{k}:</strong> {v}</p>"
+        f"<p><strong>{escape(str(k))}:</strong> {escape(str(v))}</p>"
         for k, v in custom_responses.items() if v
     )
     try:
         html = (template or _ADMIN_ALERT_DEFAULT).format(
-            guest_name=guest_name,
-            guest_email=guest_email,
-            guest_phone=guest_phone or "not provided",
-            appt_type=appt_type_name,
+            guest_name=escape(guest_name),
+            guest_email=escape(guest_email),
+            guest_phone=escape(guest_phone or "not provided"),
+            appt_type=escape(appt_type_name),
             date_time=_format_dt(start_dt),
-            notes=notes or "none",
+            notes=escape(notes or "none"),
             custom_fields=custom_html,
         )
     except (KeyError, ValueError, IndexError):
         html = _ADMIN_ALERT_DEFAULT.format(
-            guest_name=guest_name,
-            guest_email=guest_email,
-            guest_phone=guest_phone or "not provided",
-            appt_type=appt_type_name,
+            guest_name=escape(guest_name),
+            guest_email=escape(guest_email),
+            guest_phone=escape(guest_phone or "not provided"),
+            appt_type=escape(appt_type_name),
             date_time=_format_dt(start_dt),
-            notes=notes or "none",
+            notes=escape(notes or "none"),
             custom_fields=custom_html,
         )
     resend.Emails.send({
@@ -133,14 +134,14 @@ def send_cancellation_notice(
     resend.api_key = api_key
     try:
         html = (template or _CANCELLATION_DEFAULT).format(
-            guest_name=guest_name,
-            appt_type=appt_type_name,
+            guest_name=escape(guest_name),
+            appt_type=escape(appt_type_name),
             date_time=_format_dt(start_dt),
         )
     except (KeyError, ValueError, IndexError):
         html = _CANCELLATION_DEFAULT.format(
-            guest_name=guest_name,
-            appt_type=appt_type_name,
+            guest_name=escape(guest_name),
+            appt_type=escape(appt_type_name),
             date_time=_format_dt(start_dt),
         )
     resend.Emails.send({
