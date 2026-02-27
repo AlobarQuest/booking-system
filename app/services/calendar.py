@@ -97,6 +97,7 @@ class CalendarService:
         location: str = "",
         show_as: str = "busy",
         visibility: str = "default",
+        disable_reminders: bool = False,
     ) -> str:
         """Create a calendar event. Returns the event ID."""
         service = self._build_service(refresh_token)
@@ -112,6 +113,8 @@ class CalendarService:
             event["location"] = location
         if attendee_email:
             event["attendees"] = [{"email": attendee_email}]
+        if disable_reminders:
+            event["reminders"] = {"useDefault": False, "overrides": []}
         result = service.events().insert(calendarId=calendar_id, body=event, sendUpdates="all").execute()
         return result["id"]
 

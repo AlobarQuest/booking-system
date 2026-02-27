@@ -1,7 +1,8 @@
+import os
 from datetime import datetime, timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,18 @@ from app.services.booking import create_booking
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+
+@router.get("/uploads/{filename}")
+def serve_upload(filename: str):
+    settings = get_settings()
+    upload_dir = os.path.realpath(settings.upload_dir)
+    path = os.path.realpath(os.path.join(upload_dir, filename))
+    if not path.startswith(upload_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(path)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -168,6 +181,7 @@ async def submit_booking(
                 location=appt_type.location,
                 show_as=appt_type.show_as,
                 visibility=appt_type.visibility,
+                disable_reminders=not appt_type.owner_reminders_enabled,
             )
             booking.google_event_id = event_id
             db.commit()
@@ -192,6 +206,7 @@ async def submit_booking(
                 end_dt=end_dt,
                 custom_responses=custom_responses,
                 owner_name=owner_name,
+                template=get_setting(db, "email_guest_confirmation", ""),
             )
         except Exception:
             pass
@@ -208,6 +223,7 @@ async def submit_booking(
                     start_dt=start_dt,
                     notes=notes,
                     custom_responses=custom_responses,
+                    template=get_setting(db, "email_admin_alert", ""),
                 )
             except Exception:
                 pass

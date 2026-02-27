@@ -1,3 +1,5 @@
+import os
+import tempfile
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -9,7 +11,11 @@ from app.main import app
 
 
 @pytest.fixture(name="client")
-def client_fixture():
+def client_fixture(tmp_path, monkeypatch):
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
+    from app.config import get_settings
+    get_settings.cache_clear()
+
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -29,3 +35,4 @@ def client_fixture():
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
     app.dependency_overrides.clear()
+    get_settings.cache_clear()

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     from_email: str = "noreply@example.com"
     timezone: str = "America/New_York"
+    upload_dir: str = "/data/uploads"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -27,6 +27,10 @@ class AppointmentType(Base):
     calendar_window_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     calendar_window_title: Mapped[str] = mapped_column(Text, default="")
     calendar_window_calendar_id: Mapped[str] = mapped_column(Text, default="")
+    photo_filename: Mapped[str] = mapped_column(Text, default="")
+    listing_url: Mapped[str] = mapped_column(Text, default="")
+    _rental_requirements: Mapped[str] = mapped_column("rental_requirements", Text, default="[]")
+    owner_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
 
     @property
@@ -36,6 +40,16 @@ class AppointmentType(Base):
     @custom_fields.setter
     def custom_fields(self, value: list):
         self._custom_fields = json.dumps(value)
+
+    @property
+    def rental_requirements(self) -> list:
+        if not self._rental_requirements:
+            return []
+        return json.loads(self._rental_requirements)
+
+    @rental_requirements.setter
+    def rental_requirements(self, value: list):
+        self._rental_requirements = json.dumps(value)
 
 
 class AvailabilityRule(Base):
