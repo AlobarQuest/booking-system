@@ -1,6 +1,9 @@
-from sqlalchemy import create_engine
+import json
+import pytest
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
-from app.database import Base
+from sqlalchemy.pool import StaticPool
+from app.database import Base, init_db
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking, Setting
 
 
@@ -72,3 +75,42 @@ def test_appointment_type_has_title_fields():
     assert appt.owner_event_title == "Rental Showing — 123 Main St"
     assert appt.guest_event_title == "Your Home Tour"
     db.close()
+
+
+@pytest.fixture
+def db_engine(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
+    from app.config import get_settings
+    get_settings.cache_clear()
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    return engine
+
+
+def test_appointment_type_new_columns(db_engine):
+    cols = {c["name"] for c in inspect(db_engine).get_columns("appointment_types")}
+    assert "photo_filename" in cols
+    assert "listing_url" in cols
+    assert "rental_requirements" in cols
+    assert "owner_reminders_enabled" in cols
+
+
+def test_rental_requirements_property():
+    t = AppointmentType(name="Test", duration_minutes=30)
+    assert t.rental_requirements == []
+    t.rental_requirements = ["No pets", "Income 3x rent"]
+    assert json.loads(t._rental_requirements) == ["No pets", "Income 3x rent"]
+    assert t.rental_requirements == ["No pets", "Income 3x rent"]
+
+
+def test_rental_requirements_defaults_empty():
+    t = AppointmentType(name="Test", duration_minutes=30)
+    assert t.rental_requirements == []
+    assert t.photo_filename == ""
+    assert t.listing_url == ""
+    assert t.owner_reminders_enabled is False

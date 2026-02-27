@@ -41,6 +41,10 @@ def init_db():
             ("calendar_window_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
             ("calendar_window_title", "TEXT NOT NULL DEFAULT ''"),
             ("calendar_window_calendar_id", "TEXT NOT NULL DEFAULT ''"),
+            ("photo_filename", "TEXT NOT NULL DEFAULT ''"),
+            ("listing_url", "TEXT NOT NULL DEFAULT ''"),
+            ("rental_requirements", "TEXT NOT NULL DEFAULT '[]'"),
+            ("owner_reminders_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ]:
             if col not in existing:
                 conn.execute(text(f"ALTER TABLE appointment_types ADD COLUMN {col} {definition}"))
