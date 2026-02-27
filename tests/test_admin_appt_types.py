@@ -111,6 +111,34 @@ def test_update_appt_type_replaces_photo(admin_client):
     db.close()
 
 
+def test_create_appt_type_rejects_javascript_listing_url(admin_client):
+    client, SessionFactory, tmp_path = admin_client
+    resp = client.post("/admin/appointment-types", data={
+        "name": "TestJS",
+        "duration_minutes": 30,
+        "listing_url": "javascript:alert(1)",
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    db = SessionFactory()
+    t = db.query(AppointmentType).filter_by(name="TestJS").first()
+    db.close()
+    assert t.listing_url == ""
+
+
+def test_create_appt_type_accepts_https_listing_url(admin_client):
+    client, SessionFactory, tmp_path = admin_client
+    resp = client.post("/admin/appointment-types", data={
+        "name": "TestHTTPS",
+        "duration_minutes": 30,
+        "listing_url": "https://example.com/listing",
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    db = SessionFactory()
+    t = db.query(AppointmentType).filter_by(name="TestHTTPS").first()
+    db.close()
+    assert t.listing_url == "https://example.com/listing"
+
+
 def test_remove_photo_flag(admin_client):
     client, SessionFactory, tmp_path = admin_client
     upload_dir = str(tmp_path / "uploads")

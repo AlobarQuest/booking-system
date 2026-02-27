@@ -20,6 +20,15 @@ templates.env.filters["enumerate"] = enumerate
 AuthDep = Depends(require_admin)
 
 
+def _validate_url(url: str) -> str:
+    """Return the URL only if its scheme is http or https; blank it otherwise."""
+    if not url:
+        return ""
+    from urllib.parse import urlparse
+    scheme = urlparse(url).scheme.lower()
+    return url if scheme in ("http", "https") else ""
+
+
 def _flash(request: Request, message: str, type: str = "success"):
     request.session["flash"] = {"message": message, "type": type}
 
@@ -103,8 +112,8 @@ async def create_appt_type(
         calendar_window_enabled=(calendar_window_enabled == "true"),
         calendar_window_title=calendar_window_title,
         calendar_window_calendar_id=calendar_window_calendar_id,
-        listing_url=listing_url,
-        rental_application_url=rental_application_url,
+        listing_url=_validate_url(listing_url),
+        rental_application_url=_validate_url(rental_application_url),
         owner_reminders_enabled=(owner_reminders_enabled == "true"),
         active=True,
     )
@@ -176,8 +185,8 @@ async def update_appt_type(
         t.calendar_window_enabled = (calendar_window_enabled == "true")
         t.calendar_window_title = calendar_window_title
         t.calendar_window_calendar_id = calendar_window_calendar_id
-        t.listing_url = listing_url
-        t.rental_application_url = rental_application_url
+        t.listing_url = _validate_url(listing_url)
+        t.rental_application_url = _validate_url(rental_application_url)
         t.owner_reminders_enabled = (owner_reminders_enabled == "true")
         try:
             t.rental_requirements = json.loads(rental_requirements_json)
