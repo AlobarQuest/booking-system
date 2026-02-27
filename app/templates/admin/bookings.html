@@ -12,7 +12,10 @@
   <tbody>
   {% for b in upcoming %}
   <tr>
-    <td style="white-space:nowrap;">{{ b.start_datetime.strftime("%b %-d, %Y<br>%-I:%M %p")|safe }}</td>
+    <td style="white-space:nowrap;">
+      <div>{{ b.start_datetime.strftime("%b %-d, %Y") }}</div>
+      <div>{{ b.start_datetime.strftime("%-I:%M %p") }}</div>
+    </td>
     <td>{{ b.appointment_type.name }}</td>
     <td>{{ b.guest_name }}</td>
     <td>{{ b.guest_email }}</td>
