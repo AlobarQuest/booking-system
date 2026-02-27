@@ -1,4 +1,7 @@
-from fastapi import Depends, HTTPException, Request
+import hmac
+import secrets
+
+from fastapi import Depends, Form as _Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -28,3 +31,22 @@ def set_setting(db: Session, key: str, value: str):
     else:
         db.add(Setting(key=key, value=value))
     db.commit()
+
+
+def get_csrf_token(request: Request) -> str:
+    """Return the CSRF token for this session, creating one if needed."""
+    if "csrf_token" not in request.session:
+        request.session["csrf_token"] = secrets.token_hex(32)
+    return request.session["csrf_token"]
+
+
+def validate_csrf_token(request: Request, token: str) -> None:
+    """Raise HTTP 403 if token does not match the session's CSRF token."""
+    expected = request.session.get("csrf_token", "")
+    if not token or not expected or not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=403, detail="CSRF token invalid or missing.")
+
+
+async def require_csrf(request: Request, _csrf: str = _Form("")) -> None:
+    """FastAPI dependency. Validates the _csrf form field against the session token."""
+    validate_csrf_token(request, _csrf)
