@@ -507,14 +507,15 @@ def save_email_templates(
 # ---------- Google OAuth ----------
 
 @router.get("/google/authorize")
-def google_authorize(_=AuthDep):
+def google_authorize(request: Request, _=AuthDep):
     settings = get_settings()
     cal = CalendarService(
         settings.google_client_id,
         settings.google_client_secret,
         settings.google_redirect_uri,
     )
-    url = cal.get_auth_url()
+    url, state = cal.get_auth_url()
+    request.session["oauth_state"] = state
     return RedirectResponse(url, status_code=302)
 
 
@@ -522,6 +523,11 @@ def google_authorize(_=AuthDep):
 def google_callback(
     request: Request, code: str, db: Session = Depends(get_db), _=AuthDep
 ):
+    received_state = request.query_params.get("state", "")
+    expected_state = request.session.pop("oauth_state", "")
+    if not expected_state or received_state != expected_state:
+        _flash(request, "OAuth state mismatch — possible CSRF. Please try again.", "error")
+        return RedirectResponse("/admin/settings", status_code=302)
     settings = get_settings()
     cal = CalendarService(
         settings.google_client_id,

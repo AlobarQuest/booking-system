@@ -12,8 +12,20 @@ def test_get_auth_url_returns_google_url():
     mock_flow = MagicMock()
     mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?...", "state")
     with patch.object(service, "_make_flow", return_value=mock_flow):
-        url = service.get_auth_url()
+        url, state = service.get_auth_url()
     assert url == "https://accounts.google.com/o/oauth2/auth?..."
+    assert state == "state"
+
+
+def test_get_auth_url_returns_state():
+    """get_auth_url must return a (url, state) tuple so callers can store the state."""
+    service = make_service()
+    mock_flow = MagicMock()
+    mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?...", "random-state")
+    with patch.object(service, "_make_flow", return_value=mock_flow):
+        url, state = service.get_auth_url()
+    assert url.startswith("https://")
+    assert state == "random-state"
 
 
 def test_is_authorized_false_without_token():

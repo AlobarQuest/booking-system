@@ -33,10 +33,11 @@ class CalendarService:
             redirect_uri=self.redirect_uri,
         )
 
-    def get_auth_url(self) -> str:
+    def get_auth_url(self) -> tuple[str, str]:
+        """Return (auth_url, state) tuple. Caller must store state in session."""
         flow = self._make_flow()
-        auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
-        return auth_url
+        auth_url, state = flow.authorization_url(access_type="offline", prompt="consent")
+        return auth_url, state
 
     def exchange_code(self, code: str) -> str:
         """Exchange OAuth code for refresh token. Returns the refresh token."""
