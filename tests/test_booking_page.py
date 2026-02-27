@@ -77,3 +77,10 @@ def test_booking_page_no_requirements_no_button(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert 'View Requirements' not in resp.text
+
+
+def test_booking_page_card_content_has_class(booking_client):
+    resp = booking_client.get("/")
+    assert resp.status_code == 200
+    assert 'class="card-content"' in resp.text
+    assert 'class="card-text"' in resp.text

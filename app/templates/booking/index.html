@@ -21,8 +21,8 @@
 <div id="type-selection">
   {% for appt in appointment_types %}
   <div class="card static">
-    <div id="card-content-{{ appt.id }}" style="display:flex;gap:1rem;align-items:flex-start;">
-      <div style="flex:1;min-width:0;">
+    <div id="card-content-{{ appt.id }}" class="card-content">
+      <div class="card-text">
         <h3>{{ appt.name }}</h3>
         <div class="card-meta">
           {% if appt.description %}<span>{{ appt.description }}</span>{% endif %}
@@ -47,8 +47,7 @@
         {% endif %}
       </div>
       {% if appt.photo_filename %}
-      <img src="/uploads/{{ appt.photo_filename }}" alt="{{ appt.name }}"
-           style="width:170px;height:auto;border-radius:8px;flex-shrink:0;">
+      <img src="/uploads/{{ appt.photo_filename }}" alt="{{ appt.name }}">
       {% endif %}
     </div>
     <button type="button" class="btn btn-schedule"
