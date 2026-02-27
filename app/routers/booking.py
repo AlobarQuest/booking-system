@@ -181,6 +181,7 @@ async def submit_booking(
                 location=appt_type.location,
                 show_as=appt_type.show_as,
                 visibility=appt_type.visibility,
+                disable_reminders=not appt_type.owner_reminders_enabled,
             )
             booking.google_event_id = event_id
             db.commit()
