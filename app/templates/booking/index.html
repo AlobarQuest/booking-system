@@ -21,7 +21,7 @@
 <div id="type-selection">
   {% for appt in appointment_types %}
   <div class="card static">
-    <div style="display:flex;gap:1rem;align-items:flex-start;">
+    <div id="card-content-{{ appt.id }}" style="display:flex;gap:1rem;align-items:flex-start;">
       <div style="flex:1;min-width:0;">
         <h3>{{ appt.name }}</h3>
         <div class="card-meta">
@@ -41,29 +41,27 @@
           {% endif %}
         </div>
         {% endif %}
-        <button type="button" class="btn btn-schedule"
-                style="margin-top:1rem;width:100%;"
-                onclick="selectType({{ appt.id }})">Schedule Tour</button>
       </div>
       {% if appt.photo_filename %}
       <img src="/uploads/{{ appt.photo_filename }}" alt="{{ appt.name }}"
            style="width:170px;height:auto;border-radius:8px;flex-shrink:0;">
       {% endif %}
     </div>
+    <button type="button" class="btn btn-schedule"
+            style="margin-top:1rem;width:100%;"
+            onclick="selectType({{ appt.id }})">Schedule Tour</button>
   </div>
   {% endfor %}
 </div>
 
 <!-- Selected type banner (shown after clicking Schedule Tour) -->
 <div id="selected-type-banner" style="display:none;border-color:#2563eb;background:#eff6ff;" class="card static">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;">
-    <div>
-      <div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#2563eb;margin-bottom:.2rem;">Scheduling</div>
-      <div style="font-size:1.1rem;font-weight:700;color:#0f172a;" id="selected-type-name"></div>
-    </div>
-    <button type="button" class="btn btn-secondary" style="font-size:.8rem;padding:.35rem .85rem;white-space:nowrap;"
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.85rem;">
+    <span style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#2563eb;">Selected</span>
+    <button type="button" class="btn btn-secondary" style="font-size:.8rem;padding:.25rem .7rem;white-space:nowrap;"
             onclick="changeType()">&#8592; Change</button>
   </div>
+  <div id="banner-content"></div>
 </div>
 
 <!-- Requirements modal -->
@@ -95,11 +93,6 @@
 <div id="booking-form-area" class="section"></div>
 
 <script>
-var _apptNames = {
-  {% for appt in appointment_types %}
-  {{ appt.id }}: {{ appt.name | tojson }},
-  {% endfor %}
-};
 var _apptReqs = {
   {% for appt in appointment_types %}
   {% if appt.rental_requirements %}
@@ -108,9 +101,13 @@ var _apptReqs = {
   {% endfor %}
 };
 function selectType(id) {
-  var name = _apptNames[id] || '';
+  var src = document.getElementById('card-content-' + id);
+  var clone = src.cloneNode(true);
+  clone.removeAttribute('id');
+  var bannerContent = document.getElementById('banner-content');
+  bannerContent.innerHTML = '';
+  bannerContent.appendChild(clone);
   document.getElementById('type_id_input').value = id;
-  document.getElementById('selected-type-name').textContent = name;
   document.getElementById('type-selection').style.display = 'none';
   document.getElementById('selected-type-banner').style.display = 'block';
   document.getElementById('date-picker-area').style.display = 'block';
