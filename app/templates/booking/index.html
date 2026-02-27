@@ -21,29 +21,32 @@
 <div id="type-selection">
   {% for appt in appointment_types %}
   <div class="card" onclick="selectType({{ appt.id }}, this)">
-    {% if appt.photo_filename %}
-    <img src="/uploads/{{ appt.photo_filename }}" alt="{{ appt.name }}"
-         style="width:170px;height:auto;border-radius:8px;margin-bottom:.75rem;display:block;">
-    {% endif %}
-    <h3>{{ appt.name }}</h3>
-    <div class="card-meta">
-      {% if appt.description %}<span>{{ appt.description }}</span>{% endif %}
-      <span class="card-duration">&#9679; {{ appt.duration_minutes }} min</span>
-    </div>
-    {% if appt.listing_url or appt.rental_requirements %}
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;" onclick="event.stopPropagation()">
-      {% if appt.listing_url %}
-      <a href="{{ appt.listing_url }}" target="_blank" rel="noopener noreferrer"
-         class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .75rem;">View Listing</a>
+    <div style="display:flex;gap:1rem;align-items:flex-start;">
+      <div style="flex:1;min-width:0;">
+        <h3>{{ appt.name }}</h3>
+        <div class="card-meta">
+          {% if appt.description %}<span>{{ appt.description }}</span>{% endif %}
+          <span class="card-duration">&#9679; {{ appt.duration_minutes }} min</span>
+        </div>
+        {% if appt.listing_url or appt.rental_requirements %}
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;" onclick="event.stopPropagation()">
+          {% if appt.listing_url %}
+          <a href="{{ appt.listing_url }}" target="_blank" rel="noopener noreferrer"
+             class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .75rem;">View Listing</a>
+          {% endif %}
+          {% if appt.rental_requirements %}
+          <button type="button" class="btn btn-secondary"
+                  style="font-size:.8rem;padding:.3rem .75rem;"
+                  onclick="event.stopPropagation(); showRequirements({{ appt.rental_requirements | tojson }})">View Requirements</button>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% if appt.photo_filename %}
+      <img src="/uploads/{{ appt.photo_filename }}" alt="{{ appt.name }}"
+           style="width:170px;height:auto;border-radius:8px;flex-shrink:0;">
       {% endif %}
-      {% if appt.rental_requirements %}
-      <button type="button" class="btn btn-secondary"
-              style="font-size:.8rem;padding:.3rem .75rem;"
-              data-requirements="{{ appt.rental_requirements | tojson }}"
-              onclick="showRequirements(this)">View Requirements</button>
-      {% endif %}
     </div>
-    {% endif %}
   </div>
   {% endfor %}
 </div>
@@ -92,8 +95,7 @@ function selectSlot(el) {
   el.classList.add('selected');
   document.getElementById('step3').classList.add('active');
 }
-function showRequirements(btn) {
-  const reqs = JSON.parse(btn.dataset.requirements);
+function showRequirements(reqs) {
   document.getElementById('req-modal-list').innerHTML =
     reqs.map(r => '<li>' + r + '</li>').join('');
   document.getElementById('req-modal').style.display = 'flex';
