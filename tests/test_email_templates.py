@@ -108,7 +108,7 @@ def test_guest_confirmation_falls_back_to_default_on_bad_placeholder():
         )
     assert mock_send.called
     html = mock_send.call_args[0][0]["html"]
-    assert "Alice" in html  # default template rendered
+    assert "confirmed" in html.lower()
 
 
 def test_admin_alert_falls_back_to_default_on_bad_placeholder():
@@ -128,7 +128,7 @@ def test_admin_alert_falls_back_to_default_on_bad_placeholder():
         )
     assert mock_send.called
     html = mock_send.call_args[0][0]["html"]
-    assert "Alice" in html
+    assert "new booking" in html.lower()
 
 
 def test_cancellation_falls_back_to_default_on_bad_placeholder():
@@ -144,4 +144,4 @@ def test_cancellation_falls_back_to_default_on_bad_placeholder():
         )
     assert mock_send.called
     html = mock_send.call_args[0][0]["html"]
-    assert "Alice" in html
+    assert "cancelled" in html.lower()

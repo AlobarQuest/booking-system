@@ -6,6 +6,7 @@ def _format_dt(dt: datetime) -> str:
     return dt.strftime("%A, %B %-d, %Y at %-I:%M %p UTC")
 
 
+# These are trusted fallback templates — all placeholders must match the kwargs in each send function.
 _GUEST_CONFIRMATION_DEFAULT = """\
 <h2>Your appointment is confirmed</h2>
 <p>Hi {guest_name},</p>
@@ -58,7 +59,7 @@ def send_guest_confirmation(
             owner_name=owner_name,
             custom_fields=custom_html,
         )
-    except (KeyError, ValueError):
+    except (KeyError, ValueError, IndexError):
         html = _GUEST_CONFIRMATION_DEFAULT.format(
             guest_name=guest_name,
             appt_type=appt_type_name,
@@ -102,7 +103,7 @@ def send_admin_alert(
             notes=notes or "none",
             custom_fields=custom_html,
         )
-    except (KeyError, ValueError):
+    except (KeyError, ValueError, IndexError):
         html = _ADMIN_ALERT_DEFAULT.format(
             guest_name=guest_name,
             guest_email=guest_email,
@@ -136,7 +137,7 @@ def send_cancellation_notice(
             appt_type=appt_type_name,
             date_time=_format_dt(start_dt),
         )
-    except (KeyError, ValueError):
+    except (KeyError, ValueError, IndexError):
         html = _CANCELLATION_DEFAULT.format(
             guest_name=guest_name,
             appt_type=appt_type_name,
