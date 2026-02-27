@@ -33,17 +33,6 @@ class AppointmentType(Base):
     owner_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
 
-    def __init__(self, **kwargs):
-        if "photo_filename" not in kwargs:
-            kwargs["photo_filename"] = ""
-        if "listing_url" not in kwargs:
-            kwargs["listing_url"] = ""
-        if "_rental_requirements" not in kwargs and "rental_requirements" not in kwargs:
-            kwargs["_rental_requirements"] = "[]"
-        if "owner_reminders_enabled" not in kwargs:
-            kwargs["owner_reminders_enabled"] = False
-        super().__init__(**kwargs)
-
     @property
     def custom_fields(self) -> list:
         return json.loads(self._custom_fields)

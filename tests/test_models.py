@@ -111,6 +111,6 @@ def test_rental_requirements_property():
 def test_rental_requirements_defaults_empty():
     t = AppointmentType(name="Test", duration_minutes=30)
     assert t.rental_requirements == []
-    assert t.photo_filename == ""
-    assert t.listing_url == ""
-    assert t.owner_reminders_enabled is False
+    assert (t.photo_filename or "") == ""
+    assert (t.listing_url or "") == ""
+    assert not t.owner_reminders_enabled
