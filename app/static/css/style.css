@@ -103,6 +103,11 @@ body {
   padding: .15rem .65rem; font-size: .8rem; color: #475569; font-weight: 500;
 }
 
+/* Card content layout (desktop: side-by-side, mobile: stacked) */
+.card-content { display: flex; gap: 1rem; align-items: flex-start; }
+.card-text { flex: 1; min-width: 0; }
+.card-content img { width: 170px; height: auto; border-radius: 8px; flex-shrink: 0; }
+
 /* Date picker section */
 .section { margin-top: 1.5rem; }
 .section-label {
@@ -216,8 +221,12 @@ h2 { font-size: 1.25rem; margin-bottom: 1rem; color: #1e293b; }
 .flash-error { background: #fee2e2; color: #991b1b; }
 
 @media (max-width: 640px) {
+  .booking-header { padding: 1.25rem 1rem 2rem; }
   .booking-header h1 { font-size: 1.5rem; }
   .booking-body { padding: 0 .75rem; }
+  .card-content { flex-direction: column-reverse; gap: .75rem; }
+  .card-content img { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; }
+  #date-input { max-width: 100%; }
   .slots-grid { grid-template-columns: repeat(3, 1fr); }
   .admin-container { padding: .75rem; }
   .admin-nav { gap: 1rem; }
