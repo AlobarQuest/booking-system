@@ -21,13 +21,43 @@
 <div id="type-selection">
   {% for appt in appointment_types %}
   <div class="card" onclick="selectType({{ appt.id }}, this)">
+    {% if appt.photo_filename %}
+    <img src="/uploads/{{ appt.photo_filename }}" alt="{{ appt.name }}"
+         style="width:170px;height:auto;border-radius:8px;margin-bottom:.75rem;display:block;">
+    {% endif %}
     <h3>{{ appt.name }}</h3>
     <div class="card-meta">
       {% if appt.description %}<span>{{ appt.description }}</span>{% endif %}
       <span class="card-duration">&#9679; {{ appt.duration_minutes }} min</span>
     </div>
+    {% if appt.listing_url or appt.rental_requirements %}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;" onclick="event.stopPropagation()">
+      {% if appt.listing_url %}
+      <a href="{{ appt.listing_url }}" target="_blank" rel="noopener noreferrer"
+         class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .75rem;">View Listing</a>
+      {% endif %}
+      {% if appt.rental_requirements %}
+      <button type="button" class="btn btn-secondary"
+              style="font-size:.8rem;padding:.3rem .75rem;"
+              data-requirements="{{ appt.rental_requirements | tojson }}"
+              onclick="showRequirements(this)">View Requirements</button>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   {% endfor %}
+</div>
+
+<!-- Requirements modal -->
+<div id="req-modal"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center;z-index:1000;"
+     onclick="if(event.target===this)closeReqModal()">
+  <div style="background:#fff;border-radius:12px;padding:2rem;max-width:420px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:1rem;">Rental Requirements</h3>
+    <ul id="req-modal-list" style="padding-left:1.5rem;line-height:2.2;color:#334155;"></ul>
+    <button class="btn btn-secondary" style="margin-top:1.5rem;width:100%;"
+            onclick="closeReqModal()">Close</button>
+  </div>
 </div>
 
 <div id="date-picker-area" style="display:none;" class="section">
@@ -61,6 +91,15 @@ function selectSlot(el) {
   document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
   el.classList.add('selected');
   document.getElementById('step3').classList.add('active');
+}
+function showRequirements(btn) {
+  const reqs = JSON.parse(btn.dataset.requirements);
+  document.getElementById('req-modal-list').innerHTML =
+    reqs.map(r => '<li>' + r + '</li>').join('');
+  document.getElementById('req-modal').style.display = 'flex';
+}
+function closeReqModal() {
+  document.getElementById('req-modal').style.display = 'none';
 }
 </script>
 {% endblock %}
