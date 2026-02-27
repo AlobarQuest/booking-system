@@ -16,6 +16,7 @@
     <td>{% if rule.active %}Active{% else %}Inactive{% endif %}</td>
     <td>
       <form method="post" action="/admin/availability/rules/{{ rule.id }}/delete">
+        <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
         <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Delete</button>
       </form>
     </td>
@@ -30,6 +31,7 @@
 <div class="card" style="cursor:default;max-width:400px;margin-bottom:2rem;">
   <h3 style="margin-bottom:.75rem;">Add Availability Window</h3>
   <form method="post" action="/admin/availability/rules">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
     <label>Day
       <select name="day_of_week">
         {% for i, d in [('0','Monday'),('1','Tuesday'),('2','Wednesday'),('3','Thursday'),('4','Friday'),('5','Saturday'),('6','Sunday')] %}
@@ -55,6 +57,7 @@
     <td>{{ b.reason or "—" }}</td>
     <td>
       <form method="post" action="/admin/availability/blocks/{{ b.id }}/delete">
+        <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
         <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Remove</button>
       </form>
     </td>
@@ -69,6 +72,7 @@
 <div class="card" style="cursor:default;max-width:400px;margin-bottom:2rem;">
   <h3 style="margin-bottom:.75rem;">Block a Period</h3>
   <form method="post" action="/admin/availability/blocks">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
     <label>Start <input type="datetime-local" name="start_datetime" required></label>
     <label>End <input type="datetime-local" name="end_datetime" required></label>
     <label>Reason (optional) <input type="text" name="reason"></label>
@@ -79,6 +83,7 @@
 <div class="card" style="cursor:default;max-width:400px;">
   <h3 style="margin-bottom:.75rem;">Booking Window</h3>
   <form method="post" action="/admin/availability/settings">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
     <label>Minimum advance notice (hours)
       <input type="number" name="min_advance_hours" value="{{ min_advance }}" min="0">
     </label>

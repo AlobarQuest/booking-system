@@ -22,6 +22,7 @@
     <td style="display:flex;gap:.5rem;flex-wrap:wrap;">
       <a href="/admin/appointment-types/{{ t.id }}/edit" class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .6rem;">Edit</a>
       <form method="post" action="/admin/appointment-types/{{ t.id }}/toggle">
+        <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
         <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .6rem;">
           {% if t.active %}Disable{% else %}Enable{% endif %}
         </button>
@@ -38,6 +39,7 @@
 <div class="card" style="cursor:default;max-width:520px;">
   <h2>{% if edit_type %}Edit: {{ edit_type.name }}{% else %}New Appointment Type{% endif %}</h2>
   <form method="post" action="{% if edit_type %}/admin/appointment-types/{{ edit_type.id }}{% else %}/admin/appointment-types{% endif %}" style="margin-top:1rem;" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
     <label>Name *
       <input type="text" name="name" value="{{ edit_type.name if edit_type else '' }}" required>
     </label>

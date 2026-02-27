@@ -6,6 +6,7 @@
 <div class="card" style="cursor:default;max-width:520px;margin-bottom:2rem;">
   <h2 style="margin-bottom:1rem;">General</h2>
   <form method="post" action="/admin/settings">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
     <label>Your Name (used in confirmation emails)
       <input type="text" name="owner_name" value="{{ owner_name }}">
     </label>
@@ -32,6 +33,7 @@
 <div class="card" style="cursor:default;max-width:520px;margin-bottom:2rem;">
   <h2 style="margin-bottom:1rem;">Change Admin Password</h2>
   <form method="post" action="/admin/settings/password">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
     <label>New Password
       <input type="password" name="password" minlength="8" required>
     </label>
@@ -72,6 +74,7 @@
       <td style="font-size:.8rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.id }}</td>
       <td>
         <form method="post" action="/admin/settings/conflict-calendars/{{ i }}/delete">
+          <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
           <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Remove</button>
         </form>
       </td>
@@ -84,6 +87,7 @@
   {% endif %}
 
   <form method="post" action="/admin/settings/conflict-calendars" style="margin-top:.5rem;">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
     <label>Type
       <select name="cal_type">
         <option value="google">Google Calendar</option>
@@ -107,6 +111,7 @@
     HTML email templates. Leave blank to use the built-in default.
   </p>
   <form method="post" action="/admin/settings/email-templates">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
 
     <label>Guest Booking Confirmation
       <textarea name="email_guest_confirmation" rows="8"

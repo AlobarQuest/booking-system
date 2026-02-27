@@ -24,6 +24,7 @@
     <td>
       <form method="post" action="/admin/bookings/{{ b.id }}/cancel"
             onsubmit="return confirm('Cancel booking for {{ b.guest_name }}?')">
+        <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
         <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Cancel</button>
       </form>
     </td>

@@ -8,6 +8,7 @@
     </div>
   </div>
   <form hx-post="/book" hx-target="#booking-form-area" hx-swap="innerHTML">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
     <input type="hidden" name="type_id" value="{{ appt_type.id }}">
     <input type="hidden" name="start_datetime" value="{{ start_datetime }}">
     <label>Full Name *
