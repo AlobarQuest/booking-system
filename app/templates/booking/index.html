@@ -43,7 +43,7 @@
         {% endif %}
         <button type="button" class="btn btn-schedule"
                 style="margin-top:1rem;width:100%;"
-                onclick="selectType({{ appt.id }}, {{ appt.name | tojson }})">Schedule Tour</button>
+                onclick="selectType({{ appt.id }})">Schedule Tour</button>
       </div>
       {% if appt.photo_filename %}
       <img src="/uploads/{{ appt.photo_filename }}" alt="{{ appt.name }}"
@@ -95,6 +95,11 @@
 <div id="booking-form-area" class="section"></div>
 
 <script>
+var _apptNames = {
+  {% for appt in appointment_types %}
+  {{ appt.id }}: {{ appt.name | tojson }},
+  {% endfor %}
+};
 var _apptReqs = {
   {% for appt in appointment_types %}
   {% if appt.rental_requirements %}
@@ -102,7 +107,8 @@ var _apptReqs = {
   {% endif %}
   {% endfor %}
 };
-function selectType(id, name) {
+function selectType(id) {
+  var name = _apptNames[id] || '';
   document.getElementById('type_id_input').value = id;
   document.getElementById('selected-type-name').textContent = name;
   document.getElementById('type-selection').style.display = 'none';
