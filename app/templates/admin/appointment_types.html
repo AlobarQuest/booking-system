@@ -37,7 +37,7 @@
 
 <div class="card" style="cursor:default;max-width:520px;">
   <h2>{% if edit_type %}Edit: {{ edit_type.name }}{% else %}New Appointment Type{% endif %}</h2>
-  <form method="post" action="{% if edit_type %}/admin/appointment-types/{{ edit_type.id }}{% else %}/admin/appointment-types{% endif %}" style="margin-top:1rem;">
+  <form method="post" action="{% if edit_type %}/admin/appointment-types/{{ edit_type.id }}{% else %}/admin/appointment-types{% endif %}" style="margin-top:1rem;" enctype="multipart/form-data">
     <label>Name *
       <input type="text" name="name" value="{{ edit_type.name if edit_type else '' }}" required>
     </label>
@@ -86,6 +86,28 @@
              placeholder="e.g. Your Home Tour (leave blank to use appointment type name)">
     </label>
 
+    <label>Listing URL
+      <input type="url" name="listing_url"
+             value="{{ edit_type.listing_url if edit_type else '' }}"
+             placeholder="https://example.com/listing-123">
+    </label>
+
+    <label>Property Photo
+      {% if edit_type and edit_type.photo_filename %}
+      <div style="margin-bottom:.5rem;">
+        <img src="/uploads/{{ edit_type.photo_filename }}" alt="Current photo"
+             style="width:170px;height:auto;border-radius:8px;border:1px solid #e2e8f0;">
+        <br>
+        <label style="flex-direction:row;align-items:center;gap:.5rem;margin-top:.5rem;cursor:pointer;">
+          <input type="checkbox" name="remove_photo" value="true" style="width:auto;">
+          Remove current photo
+        </label>
+      </div>
+      {% endif %}
+      <input type="file" name="photo" accept="image/*">
+      <small style="color:#64748b;">Upload an MLS-size photo. Displayed at 170px wide on the booking page.</small>
+    </label>
+
     <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
     <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
       <input type="checkbox" name="requires_drive_time" value="true"
@@ -118,6 +140,80 @@
                placeholder="e.g. primary or user@gmail.com">
       </label>
     </div>
+
+    <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+    <h3 style="font-size:.95rem;font-weight:600;margin-bottom:.75rem;">Rental Requirements</h3>
+    <small style="color:#64748b;display:block;margin-bottom:.75rem;">
+      Guests see these in a modal on the booking page. Leave all unchecked to hide the requirements button.
+    </small>
+    <input type="hidden" name="rental_requirements_json" id="req-json" value="">
+    <div id="req-list" style="display:flex;flex-direction:column;gap:.4rem;">
+      {% set predefined = [
+        "No credit check required", "Income 3x monthly rent", "Valid government-issued ID",
+        "Background check required", "No smoking", "No pets", "Renter's insurance required",
+        "First month, last month, and security deposit", "References required",
+        "Minimum 12-month lease"
+      ] %}
+      {% set existing_reqs = edit_type.rental_requirements if edit_type else [] %}
+      {% for req in predefined %}
+      <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+        <input type="checkbox" class="req-checkbox" value="{{ req }}"
+               {% if req in existing_reqs %}checked{% endif %}
+               style="width:auto;" onchange="updateReqJson()">
+        {{ req }}
+      </label>
+      {% endfor %}
+      {% for req in existing_reqs %}
+      {% if req not in predefined %}
+      <div class="custom-req-item" style="display:flex;align-items:center;gap:.5rem;">
+        <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+          <input type="checkbox" class="req-checkbox" value="{{ req }}" checked
+                 style="width:auto;" onchange="updateReqJson()">
+          {{ req }}
+        </label>
+        <button type="button" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem;padding:0;"
+                onclick="this.parentElement.remove();updateReqJson()">×</button>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:.5rem;margin-top:.75rem;">
+      <input type="text" id="custom-req-input" placeholder="Add custom requirement..."
+             style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomReq();}">
+      <button type="button" class="btn btn-secondary" onclick="addCustomReq()"
+              style="white-space:nowrap;">+ Add</button>
+    </div>
+    <script>
+    function updateReqJson() {
+      const checked = [...document.querySelectorAll('.req-checkbox:checked')].map(cb => cb.value);
+      document.getElementById('req-json').value = JSON.stringify(checked);
+    }
+    function addCustomReq() {
+      const input = document.getElementById('custom-req-input');
+      const val = input.value.trim();
+      if (!val) return;
+      const div = document.createElement('div');
+      div.className = 'custom-req-item';
+      div.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+      const safeVal = val.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      div.innerHTML = '<label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;"><input type="checkbox" class="req-checkbox" value="' + safeVal + '" checked style="width:auto;" onchange="updateReqJson()"> ' + safeVal + '</label> <button type="button" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem;padding:0;" onclick="this.parentElement.remove();updateReqJson()">×</button>';
+      document.getElementById('req-list').appendChild(div);
+      input.value = '';
+      updateReqJson();
+    }
+    updateReqJson();
+    </script>
+
+    <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+    <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+      <input type="checkbox" name="owner_reminders_enabled" value="true"
+             {% if edit_type and edit_type.owner_reminders_enabled %}checked{% endif %}
+             style="width:auto;">
+      Send calendar reminders on my event
+    </label>
+    <small style="color:#64748b;margin-top:-.5rem;">
+      When unchecked, your calendar event is created with no reminders/notifications.
+    </small>
 
     <div style="display:flex;gap:.75rem;margin-top:.25rem;">
       <button type="submit" class="btn btn-primary">{% if edit_type %}Save Changes{% else %}Create Type{% endif %}</button>

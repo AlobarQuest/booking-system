@@ -1,6 +1,9 @@
 import bcrypt
+import json
+import os
+import uuid
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -64,7 +67,7 @@ def list_appt_types(request: Request, db: Session = Depends(get_db), _=AuthDep):
 
 
 @router.post("/appointment-types")
-def create_appt_type(
+async def create_appt_type(
     request: Request,
     name: str = Form(...),
     description: str = Form(""),
@@ -82,6 +85,11 @@ def create_appt_type(
     calendar_window_enabled: str = Form("false"),
     calendar_window_title: str = Form(""),
     calendar_window_calendar_id: str = Form(""),
+    listing_url: str = Form(""),
+    rental_requirements_json: str = Form("[]"),
+    owner_reminders_enabled: str = Form("false"),
+    photo: UploadFile | None = File(None),
+    remove_photo: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
 ):
@@ -94,11 +102,28 @@ def create_appt_type(
         calendar_window_enabled=(calendar_window_enabled == "true"),
         calendar_window_title=calendar_window_title,
         calendar_window_calendar_id=calendar_window_calendar_id,
+        listing_url=listing_url,
+        owner_reminders_enabled=(owner_reminders_enabled == "true"),
         active=True,
     )
     t.custom_fields = []
+    try:
+        t.rental_requirements = json.loads(rental_requirements_json)
+    except (json.JSONDecodeError, ValueError):
+        t.rental_requirements = []
     db.add(t)
     db.commit()
+    db.refresh(t)
+    if photo and photo.filename:
+        from app.config import get_settings as _gs
+        ext = os.path.splitext(photo.filename)[1].lower() or ".jpg"
+        filename = f"{uuid.uuid4().hex}{ext}"
+        upload_dir = _gs().upload_dir
+        os.makedirs(upload_dir, exist_ok=True)
+        with open(os.path.join(upload_dir, filename), "wb") as f:
+            f.write(await photo.read())
+        t.photo_filename = filename
+        db.commit()
     _flash(request, f"Created '{name}'.")
     return RedirectResponse("/admin/appointment-types", status_code=302)
 
@@ -115,7 +140,7 @@ def edit_appt_type_page(
 
 
 @router.post("/appointment-types/{type_id}")
-def update_appt_type(
+async def update_appt_type(
     request: Request, type_id: int,
     name: str = Form(...), description: str = Form(""),
     duration_minutes: int = Form(...), buffer_before_minutes: int = Form(0),
@@ -128,6 +153,11 @@ def update_appt_type(
     calendar_window_enabled: str = Form("false"),
     calendar_window_title: str = Form(""),
     calendar_window_calendar_id: str = Form(""),
+    listing_url: str = Form(""),
+    rental_requirements_json: str = Form("[]"),
+    owner_reminders_enabled: str = Form("false"),
+    photo: UploadFile | None = File(None),
+    remove_photo: str = Form(""),
     db: Session = Depends(get_db), _=AuthDep,
 ):
     t = db.query(AppointmentType).filter_by(id=type_id).first()
@@ -143,6 +173,30 @@ def update_appt_type(
         t.calendar_window_enabled = (calendar_window_enabled == "true")
         t.calendar_window_title = calendar_window_title
         t.calendar_window_calendar_id = calendar_window_calendar_id
+        t.listing_url = listing_url
+        t.owner_reminders_enabled = (owner_reminders_enabled == "true")
+        try:
+            t.rental_requirements = json.loads(rental_requirements_json)
+        except (json.JSONDecodeError, ValueError):
+            t.rental_requirements = []
+        from app.config import get_settings as _gs
+        upload_dir = _gs().upload_dir
+        if remove_photo == "true" and (t.photo_filename or ""):
+            old_path = os.path.join(upload_dir, t.photo_filename)
+            if os.path.isfile(old_path):
+                os.remove(old_path)
+            t.photo_filename = ""
+        elif photo and photo.filename:
+            if t.photo_filename or "":
+                old_path = os.path.join(upload_dir, t.photo_filename)
+                if os.path.isfile(old_path):
+                    os.remove(old_path)
+            ext = os.path.splitext(photo.filename)[1].lower() or ".jpg"
+            filename = f"{uuid.uuid4().hex}{ext}"
+            os.makedirs(upload_dir, exist_ok=True)
+            with open(os.path.join(upload_dir, filename), "wb") as f:
+                f.write(await photo.read())
+            t.photo_filename = filename
         db.commit()
         _flash(request, f"Updated '{name}'.")
     return RedirectResponse("/admin/appointment-types", status_code=302)
