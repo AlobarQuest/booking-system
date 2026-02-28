@@ -182,6 +182,7 @@ def test_booking_has_reschedule_token():
 def test_confirmation_email_includes_reschedule_link():
     from unittest.mock import patch
     from app.config import Settings
+    from app.models import Booking
 
     client, Session = setup_client()
     db = Session()
@@ -204,5 +205,10 @@ def test_confirmation_email_includes_reschedule_link():
 
     assert mock_send.called
     sent_html = mock_send.call_args[0][0]["html"]
-    assert "/reschedule/" in sent_html
+
+    db2 = Session()
+    booking = db2.query(Booking).filter_by(guest_email="link@example.com").first()
+    db2.close()
+    assert booking is not None
+    assert f"/reschedule/{booking.reschedule_token}" in sent_html
     app.dependency_overrides.clear()

@@ -61,7 +61,7 @@ def send_guest_confirmation(
             date_time=_format_dt(start_dt),
             owner_name=escape(owner_name),
             custom_fields=custom_html,
-            reschedule_url=reschedule_url,
+            reschedule_url=escape(reschedule_url),
         )
     except (KeyError, ValueError, IndexError):
         html = _GUEST_CONFIRMATION_DEFAULT.format(
@@ -70,7 +70,7 @@ def send_guest_confirmation(
             date_time=_format_dt(start_dt),
             owner_name=escape(owner_name),
             custom_fields=custom_html,
-            reschedule_url=reschedule_url,
+            reschedule_url=escape(reschedule_url),
         )
     resend.Emails.send({
         "from": from_email,
