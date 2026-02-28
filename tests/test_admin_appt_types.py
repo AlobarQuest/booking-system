@@ -140,6 +140,68 @@ def test_create_appt_type_accepts_https_listing_url(admin_client):
     assert t.listing_url == "https://example.com/listing"
 
 
+def test_create_admin_initiated_type(admin_client):
+    """Can create an admin-initiated appointment type. requires_drive_time is forced True."""
+    client, SessionFactory, _ = admin_client
+    resp = client.post(
+        "/admin/appointment-types",
+        data={
+            "name": "Property Inspection",
+            "description": "",
+            "duration_minutes": "45",
+            "buffer_before_minutes": "0",
+            "buffer_after_minutes": "15",
+            "calendar_id": "primary",
+            "color": "#3b82f6",
+            "owner_event_title": "Damage Inspection",
+            "admin_initiated": "true",
+        },
+    )
+    assert resp.status_code == 302
+    db = SessionFactory()
+    t = db.query(AppointmentType).filter_by(name="Property Inspection").first()
+    assert t is not None
+    assert t.admin_initiated is True
+    assert t.requires_drive_time is True
+    db.close()
+
+
+def test_create_type_specific_availability_rule(admin_client):
+    """Can add a type-specific availability rule to an appointment type."""
+    client, SessionFactory, _ = admin_client
+    # Create the type first
+    client.post(
+        "/admin/appointment-types",
+        data={
+            "name": "Inspection",
+            "duration_minutes": "30",
+            "admin_initiated": "true",
+            "color": "#fff",
+            "calendar_id": "primary",
+            "owner_event_title": "Insp",
+        },
+    )
+    db = SessionFactory()
+    t = db.query(AppointmentType).filter_by(name="Inspection").first()
+    type_id = t.id
+    db.close()
+
+    resp = client.post(
+        f"/admin/appointment-types/{type_id}/rules",
+        data={"day_of_week": "1", "start_time": "08:00", "end_time": "16:00"},
+    )
+    assert resp.status_code == 302
+
+    db = SessionFactory()
+    from app.models import AvailabilityRule
+    rule = db.query(AvailabilityRule).filter_by(appointment_type_id=type_id).first()
+    assert rule is not None
+    assert rule.day_of_week == 1
+    assert rule.start_time == "08:00"
+    assert rule.end_time == "16:00"
+    db.close()
+
+
 def test_remove_photo_flag(admin_client):
     client, SessionFactory, tmp_path = admin_client
     upload_dir = str(tmp_path / "uploads")

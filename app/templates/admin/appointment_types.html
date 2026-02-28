@@ -40,6 +40,18 @@
   <h2>{% if edit_type %}Edit: {{ edit_type.name }}{% else %}New Appointment Type{% endif %}</h2>
   <form method="post" action="{% if edit_type %}/admin/appointment-types/{{ edit_type.id }}{% else %}/admin/appointment-types{% endif %}" style="margin-top:1rem;" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+
+    <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+      <input type="checkbox" name="admin_initiated" value="true" id="admin-initiated-check"
+             {% if edit_type and edit_type.admin_initiated %}checked{% endif %}
+             style="width:auto;"
+             onchange="toggleAdminInitiated()">
+      Admin-initiated inspection (address entered at booking time)
+    </label>
+    <small style="color:#64748b;margin-top:-.5rem;margin-bottom:.75rem;display:block;">
+      When checked: drive time is always calculated, no guest email/invite, hides public-booking fields.
+    </small>
+
     <label>Name *
       <input type="text" name="name" value="{{ edit_type.name if edit_type else '' }}" required>
     </label>
@@ -61,167 +73,218 @@
     <label>Color
       <input type="color" name="color" value="{{ edit_type.color if edit_type else '#3b82f6' }}" style="width:60px;height:36px;padding:2px;">
     </label>
-    <label>Location
-      <input type="text" name="location" value="{{ edit_type.location if edit_type else '' }}" placeholder="e.g. 123 Main St or Zoom link">
-    </label>
-    <label>Show as
-      <select name="show_as">
-        <option value="busy" {% if not edit_type or edit_type.show_as == 'busy' %}selected{% endif %}>Busy</option>
-        <option value="free" {% if edit_type and edit_type.show_as == 'free' %}selected{% endif %}>Free</option>
-      </select>
-    </label>
-    <label>Visibility
-      <select name="visibility">
-        <option value="default" {% if not edit_type or edit_type.visibility == 'default' %}selected{% endif %}>Default (calendar setting)</option>
-        <option value="public" {% if edit_type and edit_type.visibility == 'public' %}selected{% endif %}>Public</option>
-        <option value="private" {% if edit_type and edit_type.visibility == 'private' %}selected{% endif %}>Private</option>
-      </select>
-    </label>
     <label>My Calendar Event Title
       <input type="text" name="owner_event_title"
              value="{{ edit_type.owner_event_title if edit_type else '' }}"
              placeholder="e.g. Showing — 123 Main St (leave blank for default)">
     </label>
-    <label>Guest Confirmation Title
-      <input type="text" name="guest_event_title"
-             value="{{ edit_type.guest_event_title if edit_type else '' }}"
-             placeholder="e.g. Your Home Tour (leave blank to use appointment type name)">
-    </label>
 
-    <label>Listing URL
-      <input type="url" name="listing_url"
-             value="{{ edit_type.listing_url if edit_type else '' }}"
-             placeholder="https://example.com/listing-123">
-    </label>
+    <div id="standard-fields" style="display:{% if edit_type and edit_type.admin_initiated %}none{% else %}block{% endif %};">
+      <label>Location
+        <input type="text" name="location" value="{{ edit_type.location if edit_type else '' }}" placeholder="e.g. 123 Main St or Zoom link">
+      </label>
+      <label>Show as
+        <select name="show_as">
+          <option value="busy" {% if not edit_type or edit_type.show_as == 'busy' %}selected{% endif %}>Busy</option>
+          <option value="free" {% if edit_type and edit_type.show_as == 'free' %}selected{% endif %}>Free</option>
+        </select>
+      </label>
+      <label>Visibility
+        <select name="visibility">
+          <option value="default" {% if not edit_type or edit_type.visibility == 'default' %}selected{% endif %}>Default (calendar setting)</option>
+          <option value="public" {% if edit_type and edit_type.visibility == 'public' %}selected{% endif %}>Public</option>
+          <option value="private" {% if edit_type and edit_type.visibility == 'private' %}selected{% endif %}>Private</option>
+        </select>
+      </label>
+      <label>Guest Confirmation Title
+        <input type="text" name="guest_event_title"
+               value="{{ edit_type.guest_event_title if edit_type else '' }}"
+               placeholder="e.g. Your Home Tour (leave blank to use appointment type name)">
+      </label>
 
-    <label>Rental Application Link
-      <input type="url" name="rental_application_url"
-             value="{{ edit_type.rental_application_url if edit_type else '' }}"
-             placeholder="https://example.com/apply">
-    </label>
+      <label>Listing URL
+        <input type="url" name="listing_url"
+               value="{{ edit_type.listing_url if edit_type else '' }}"
+               placeholder="https://example.com/listing-123">
+      </label>
 
-    <label>Property Photo
-      {% if edit_type and edit_type.photo_filename %}
-      <div style="margin-bottom:.5rem;">
-        <img src="/uploads/{{ edit_type.photo_filename }}" alt="Current photo"
-             style="width:170px;height:auto;border-radius:8px;border:1px solid #e2e8f0;">
-        <br>
-        <label style="flex-direction:row;align-items:center;gap:.5rem;margin-top:.5rem;cursor:pointer;">
-          <input type="checkbox" name="remove_photo" value="true" style="width:auto;">
-          Remove current photo
+      <label>Rental Application Link
+        <input type="url" name="rental_application_url"
+               value="{{ edit_type.rental_application_url if edit_type else '' }}"
+               placeholder="https://example.com/apply">
+      </label>
+
+      <label>Property Photo
+        {% if edit_type and edit_type.photo_filename %}
+        <div style="margin-bottom:.5rem;">
+          <img src="/uploads/{{ edit_type.photo_filename }}" alt="Current photo"
+               style="width:170px;height:auto;border-radius:8px;border:1px solid #e2e8f0;">
+          <br>
+          <label style="flex-direction:row;align-items:center;gap:.5rem;margin-top:.5rem;cursor:pointer;">
+            <input type="checkbox" name="remove_photo" value="true" style="width:auto;">
+            Remove current photo
+          </label>
+        </div>
+        {% endif %}
+        <input type="file" name="photo" accept="image/*">
+        <small style="color:#64748b;">Upload an MLS-size photo. Displayed at 170px wide on the booking page.</small>
+      </label>
+
+      <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+      <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+        <input type="checkbox" name="requires_drive_time" value="true"
+               {% if edit_type and edit_type.requires_drive_time %}checked{% endif %}
+               style="width:auto;">
+        Calculate drive time to this location before each appointment
+      </label>
+      <small style="color:#64748b;margin-top:-.5rem;">
+        Requires a physical location above and GOOGLE_MAPS_API_KEY configured in the environment.
+      </small>
+
+      <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+      <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+        <input type="checkbox" name="calendar_window_enabled" value="true"
+               id="cal_window_check"
+               {% if edit_type and edit_type.calendar_window_enabled %}checked{% endif %}
+               style="width:auto;"
+               onchange="document.getElementById('cal_window_fields').style.display=this.checked?'block':'none'">
+        Only allow bookings during specific Google Calendar events
+      </label>
+      <div id="cal_window_fields" style="display:{% if edit_type and edit_type.calendar_window_enabled %}block{% else %}none{% endif %};">
+        <label>Event Title (exact match, case-insensitive)
+          <input type="text" name="calendar_window_title"
+                 value="{{ edit_type.calendar_window_title if edit_type else '' }}"
+                 placeholder="e.g. POSSIBLE RENTAL SHOWINGS">
+        </label>
+        <label>Calendar ID (leave blank to use same calendar as booking)
+          <input type="text" name="calendar_window_calendar_id"
+                 value="{{ edit_type.calendar_window_calendar_id if edit_type else '' }}"
+                 placeholder="e.g. primary or user@gmail.com">
         </label>
       </div>
-      {% endif %}
-      <input type="file" name="photo" accept="image/*">
-      <small style="color:#64748b;">Upload an MLS-size photo. Displayed at 170px wide on the booking page.</small>
-    </label>
 
-    <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
-    <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
-      <input type="checkbox" name="requires_drive_time" value="true"
-             {% if edit_type and edit_type.requires_drive_time %}checked{% endif %}
-             style="width:auto;">
-      Calculate drive time to this location before each appointment
-    </label>
-    <small style="color:#64748b;margin-top:-.5rem;">
-      Requires a physical location above and GOOGLE_MAPS_API_KEY configured in the environment.
-    </small>
-
-    <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
-    <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
-      <input type="checkbox" name="calendar_window_enabled" value="true"
-             id="cal_window_check"
-             {% if edit_type and edit_type.calendar_window_enabled %}checked{% endif %}
-             style="width:auto;"
-             onchange="document.getElementById('cal_window_fields').style.display=this.checked?'block':'none'">
-      Only allow bookings during specific Google Calendar events
-    </label>
-    <div id="cal_window_fields" style="display:{% if edit_type and edit_type.calendar_window_enabled %}block{% else %}none{% endif %};">
-      <label>Event Title (exact match, case-insensitive)
-        <input type="text" name="calendar_window_title"
-               value="{{ edit_type.calendar_window_title if edit_type else '' }}"
-               placeholder="e.g. POSSIBLE RENTAL SHOWINGS">
-      </label>
-      <label>Calendar ID (leave blank to use same calendar as booking)
-        <input type="text" name="calendar_window_calendar_id"
-               value="{{ edit_type.calendar_window_calendar_id if edit_type else '' }}"
-               placeholder="e.g. primary or user@gmail.com">
-      </label>
-    </div>
-
-    <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
-    <h3 style="font-size:.95rem;font-weight:600;margin-bottom:.75rem;">Rental Requirements</h3>
-    <small style="color:#64748b;display:block;margin-bottom:.75rem;">
-      Guests see these in a modal on the booking page. Leave all unchecked to hide the requirements button.
-    </small>
-    <input type="hidden" name="rental_requirements_json" id="req-json" value="">
-    <div id="req-list" style="display:flex;flex-direction:column;gap:.4rem;">
-      {% set predefined = [
-        "No credit check required", "Income 3x monthly rent", "Valid government-issued ID",
-        "Background check required", "No smoking", "No pets", "Renter's insurance required",
-        "First month, last month, and security deposit", "References required",
-        "Minimum 12-month lease"
-      ] %}
-      {% set existing_reqs = edit_type.rental_requirements if edit_type else [] %}
-      {% for req in predefined %}
-      <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
-        <input type="checkbox" class="req-checkbox" value="{{ req }}"
-               {% if req in existing_reqs %}checked{% endif %}
-               style="width:auto;" onchange="updateReqJson()">
-        {{ req }}
-      </label>
-      {% endfor %}
-      {% for req in existing_reqs %}
-      {% if req not in predefined %}
-      <div class="custom-req-item" style="display:flex;align-items:center;gap:.5rem;">
+      <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+      <h3 style="font-size:.95rem;font-weight:600;margin-bottom:.75rem;">Rental Requirements</h3>
+      <small style="color:#64748b;display:block;margin-bottom:.75rem;">
+        Guests see these in a modal on the booking page. Leave all unchecked to hide the requirements button.
+      </small>
+      <input type="hidden" name="rental_requirements_json" id="req-json" value="">
+      <div id="req-list" style="display:flex;flex-direction:column;gap:.4rem;">
+        {% set predefined = [
+          "No credit check required", "Income 3x monthly rent", "Valid government-issued ID",
+          "Background check required", "No smoking", "No pets", "Renter's insurance required",
+          "First month, last month, and security deposit", "References required",
+          "Minimum 12-month lease"
+        ] %}
+        {% set existing_reqs = edit_type.rental_requirements if edit_type else [] %}
+        {% for req in predefined %}
         <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
-          <input type="checkbox" class="req-checkbox" value="{{ req }}" checked
+          <input type="checkbox" class="req-checkbox" value="{{ req }}"
+                 {% if req in existing_reqs %}checked{% endif %}
                  style="width:auto;" onchange="updateReqJson()">
           {{ req }}
         </label>
-        <button type="button" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem;padding:0;"
-                onclick="this.parentElement.remove();updateReqJson()">×</button>
+        {% endfor %}
+        {% for req in existing_reqs %}
+        {% if req not in predefined %}
+        <div class="custom-req-item" style="display:flex;align-items:center;gap:.5rem;">
+          <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+            <input type="checkbox" class="req-checkbox" value="{{ req }}" checked
+                   style="width:auto;" onchange="updateReqJson()">
+            {{ req }}
+          </label>
+          <button type="button" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem;padding:0;"
+                  onclick="this.parentElement.remove();updateReqJson()">×</button>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      <div style="display:flex;gap:.5rem;margin-top:.75rem;">
+        <input type="text" id="custom-req-input" placeholder="Add custom requirement..."
+               style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomReq();}">
+        <button type="button" class="btn btn-secondary" onclick="addCustomReq()"
+                style="white-space:nowrap;">+ Add</button>
+      </div>
+      <script>
+      function updateReqJson() {
+        const checked = [...document.querySelectorAll('.req-checkbox:checked')].map(cb => cb.value);
+        document.getElementById('req-json').value = JSON.stringify(checked);
+      }
+      function addCustomReq() {
+        const input = document.getElementById('custom-req-input');
+        const val = input.value.trim();
+        if (!val) return;
+        const div = document.createElement('div');
+        div.className = 'custom-req-item';
+        div.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+        const safeVal = val.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        div.innerHTML = '<label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;"><input type="checkbox" class="req-checkbox" value="' + safeVal + '" checked style="width:auto;" onchange="updateReqJson()"> ' + safeVal + '</label> <button type="button" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem;padding:0;" onclick="this.parentElement.remove();updateReqJson()">×</button>';
+        document.getElementById('req-list').appendChild(div);
+        input.value = '';
+        updateReqJson();
+      }
+      updateReqJson();
+      </script>
+
+      <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+      <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
+        <input type="checkbox" name="owner_reminders_enabled" value="true"
+               {% if edit_type and edit_type.owner_reminders_enabled %}checked{% endif %}
+               style="width:auto;">
+        Send calendar reminders on my event
+      </label>
+      <small style="color:#64748b;margin-top:-.5rem;">
+        When unchecked, your calendar event is created with no reminders/notifications.
+      </small>
+    </div>
+
+    <div id="admin-fields" style="display:{% if edit_type and edit_type.admin_initiated %}block{% else %}none{% endif %};">
+      {% if edit_type and edit_type.admin_initiated %}
+      <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+      <h3 style="font-size:.95rem;font-weight:600;margin-bottom:.75rem;">Inspection Availability Windows</h3>
+      <small style="color:#64748b;display:block;margin-bottom:.75rem;">
+        These replace global availability rules for this type. Leave empty to use global rules.
+      </small>
+      {% if type_rules %}
+      <table style="margin-bottom:1rem;">
+        <thead><tr><th>Day</th><th>Start</th><th>End</th><th></th></tr></thead>
+        <tbody>
+        {% for rule in type_rules %}
+        <tr>
+          <td>{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][rule.day_of_week] }}</td>
+          <td>{{ rule.start_time_display }}</td>
+          <td>{{ rule.end_time_display }}</td>
+          <td>
+            <form method="post" action="/admin/appointment-types/{{ edit_type.id }}/rules/{{ rule.id }}/delete" style="display:inline;">
+              <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+              <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="color:#64748b;margin-bottom:1rem;">No windows set. Using global availability rules.</p>
+      {% endif %}
+      <div class="card" style="cursor:default;max-width:400px;margin-bottom:1rem;">
+        <h4 style="margin-bottom:.75rem;">Add Window</h4>
+        <form method="post" action="/admin/appointment-types/{{ edit_type.id }}/rules">
+          <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+          <label>Day
+            <select name="day_of_week">
+              {% for i, d in [('0','Monday'),('1','Tuesday'),('2','Wednesday'),('3','Thursday'),('4','Friday'),('5','Saturday'),('6','Sunday')] %}
+              <option value="{{ i }}">{{ d }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Start Time <input type="time" name="start_time" value="08:00" required></label>
+          <label>End Time <input type="time" name="end_time" value="17:00" required></label>
+          <button type="submit" class="btn btn-primary" style="margin-top:.25rem;">Add Window</button>
+        </form>
       </div>
       {% endif %}
-      {% endfor %}
     </div>
-    <div style="display:flex;gap:.5rem;margin-top:.75rem;">
-      <input type="text" id="custom-req-input" placeholder="Add custom requirement..."
-             style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomReq();}">
-      <button type="button" class="btn btn-secondary" onclick="addCustomReq()"
-              style="white-space:nowrap;">+ Add</button>
-    </div>
-    <script>
-    function updateReqJson() {
-      const checked = [...document.querySelectorAll('.req-checkbox:checked')].map(cb => cb.value);
-      document.getElementById('req-json').value = JSON.stringify(checked);
-    }
-    function addCustomReq() {
-      const input = document.getElementById('custom-req-input');
-      const val = input.value.trim();
-      if (!val) return;
-      const div = document.createElement('div');
-      div.className = 'custom-req-item';
-      div.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
-      const safeVal = val.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      div.innerHTML = '<label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;"><input type="checkbox" class="req-checkbox" value="' + safeVal + '" checked style="width:auto;" onchange="updateReqJson()"> ' + safeVal + '</label> <button type="button" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem;padding:0;" onclick="this.parentElement.remove();updateReqJson()">×</button>';
-      document.getElementById('req-list').appendChild(div);
-      input.value = '';
-      updateReqJson();
-    }
-    updateReqJson();
-    </script>
-
-    <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
-    <label style="flex-direction:row;align-items:center;gap:.5rem;cursor:pointer;">
-      <input type="checkbox" name="owner_reminders_enabled" value="true"
-             {% if edit_type and edit_type.owner_reminders_enabled %}checked{% endif %}
-             style="width:auto;">
-      Send calendar reminders on my event
-    </label>
-    <small style="color:#64748b;margin-top:-.5rem;">
-      When unchecked, your calendar event is created with no reminders/notifications.
-    </small>
 
     <div style="display:flex;gap:.75rem;margin-top:.25rem;">
       <button type="submit" class="btn btn-primary">{% if edit_type %}Save Changes{% else %}Create Type{% endif %}</button>
@@ -229,4 +292,16 @@
     </div>
   </form>
 </div>
+
+<script>
+function toggleAdminInitiated() {
+  var isAdmin = document.getElementById('admin-initiated-check').checked;
+  document.getElementById('standard-fields').style.display = isAdmin ? 'none' : 'block';
+  document.getElementById('admin-fields').style.display = isAdmin ? 'block' : 'none';
+}
+// Set initial state on page load
+document.addEventListener('DOMContentLoaded', function() {
+  toggleAdminInitiated();
+});
+</script>
 {% endblock %}

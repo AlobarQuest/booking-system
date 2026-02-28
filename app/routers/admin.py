@@ -73,7 +73,7 @@ def dashboard(request: Request, db: Session = Depends(get_db), _=AuthDep):
 def list_appt_types(request: Request, db: Session = Depends(get_db), _=AuthDep):
     types = db.query(AppointmentType).order_by(AppointmentType.id).all()
     return templates.TemplateResponse("admin/appointment_types.html", {
-        "request": request, "types": types, "edit_type": None, "flash": _get_flash(request),
+        "request": request, "types": types, "edit_type": None, "type_rules": [], "flash": _get_flash(request),
     })
 
 
@@ -100,6 +100,7 @@ async def create_appt_type(
     rental_application_url: str = Form(""),
     rental_requirements_json: str = Form("[]"),
     owner_reminders_enabled: str = Form("false"),
+    admin_initiated: str = Form("false"),
     photo: UploadFile | None = File(None),
     remove_photo: str = Form(""),
     db: Session = Depends(get_db),
@@ -111,7 +112,8 @@ async def create_appt_type(
         buffer_before_minutes=buffer_before_minutes, buffer_after_minutes=buffer_after_minutes,
         calendar_id=calendar_id, color=color, location=location, show_as=show_as,
         visibility=visibility, owner_event_title=owner_event_title, guest_event_title=guest_event_title,
-        requires_drive_time=(requires_drive_time == "true"),
+        admin_initiated=(admin_initiated == "true"),
+        requires_drive_time=True if (admin_initiated == "true") else (requires_drive_time == "true"),
         calendar_window_enabled=(calendar_window_enabled == "true"),
         calendar_window_title=calendar_window_title,
         calendar_window_calendar_id=calendar_window_calendar_id,
@@ -148,8 +150,16 @@ def edit_appt_type_page(
 ):
     t = db.query(AppointmentType).filter_by(id=type_id).first()
     types = db.query(AppointmentType).order_by(AppointmentType.id).all()
+    type_rules = (
+        db.query(AvailabilityRule)
+        .filter_by(appointment_type_id=type_id)
+        .order_by(AvailabilityRule.day_of_week)
+        .all()
+        if t else []
+    )
     return templates.TemplateResponse("admin/appointment_types.html", {
-        "request": request, "types": types, "edit_type": t, "flash": _get_flash(request),
+        "request": request, "types": types, "edit_type": t,
+        "type_rules": type_rules, "flash": _get_flash(request),
     })
 
 
@@ -171,6 +181,7 @@ async def update_appt_type(
     rental_application_url: str = Form(""),
     rental_requirements_json: str = Form("[]"),
     owner_reminders_enabled: str = Form("false"),
+    admin_initiated: str = Form("false"),
     photo: UploadFile | None = File(None),
     remove_photo: str = Form(""),
     db: Session = Depends(get_db), _=AuthDep,
@@ -185,7 +196,11 @@ async def update_appt_type(
         t.location = location; t.show_as = show_as; t.visibility = visibility
         t.owner_event_title = owner_event_title
         t.guest_event_title = guest_event_title
-        t.requires_drive_time = (requires_drive_time == "true")
+        t.admin_initiated = (admin_initiated == "true")
+        if t.admin_initiated:
+            t.requires_drive_time = True
+        else:
+            t.requires_drive_time = (requires_drive_time == "true")
         t.calendar_window_enabled = (calendar_window_enabled == "true")
         t.calendar_window_title = calendar_window_title
         t.calendar_window_calendar_id = calendar_window_calendar_id
@@ -230,6 +245,48 @@ def toggle_appt_type(
         db.commit()
         _flash(request, f"{'Enabled' if t.active else 'Disabled'} '{t.name}'.")
     return RedirectResponse("/admin/appointment-types", status_code=302)
+
+
+@router.post("/appointment-types/{type_id}/rules")
+def create_type_rule(
+    request: Request,
+    type_id: int,
+    day_of_week: int = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    db: Session = Depends(get_db),
+    _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
+):
+    t = db.query(AppointmentType).filter_by(id=type_id).first()
+    if t:
+        db.add(AvailabilityRule(
+            day_of_week=day_of_week,
+            start_time=start_time,
+            end_time=end_time,
+            active=True,
+            appointment_type_id=type_id,
+        ))
+        db.commit()
+        _flash(request, "Availability window added.")
+    return RedirectResponse(f"/admin/appointment-types/{type_id}/edit", status_code=302)
+
+
+@router.post("/appointment-types/{type_id}/rules/{rule_id}/delete")
+def delete_type_rule(
+    request: Request,
+    type_id: int,
+    rule_id: int,
+    db: Session = Depends(get_db),
+    _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
+):
+    rule = db.query(AvailabilityRule).filter_by(id=rule_id, appointment_type_id=type_id).first()
+    if rule:
+        db.delete(rule)
+        db.commit()
+        _flash(request, "Rule deleted.")
+    return RedirectResponse(f"/admin/appointment-types/{type_id}/edit", status_code=302)
 
 
 # ---------- Availability ----------
