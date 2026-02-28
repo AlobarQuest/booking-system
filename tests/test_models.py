@@ -114,3 +114,20 @@ def test_rental_requirements_defaults_empty():
     assert (t.photo_filename or "") == ""
     assert (t.listing_url or "") == ""
     assert not t.owner_reminders_enabled
+
+
+def test_appointment_type_has_admin_initiated():
+    t = AppointmentType()
+    assert hasattr(t, "admin_initiated")
+    assert t.admin_initiated is False or t.admin_initiated == 0
+
+
+def test_booking_has_location():
+    b = Booking()
+    assert hasattr(b, "location")
+
+
+def test_availability_rule_has_appointment_type_id():
+    r = AvailabilityRule()
+    assert hasattr(r, "appointment_type_id")
+    assert r.appointment_type_id is None

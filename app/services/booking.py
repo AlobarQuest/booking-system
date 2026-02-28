@@ -14,6 +14,7 @@ def create_booking(
     notes: str,
     custom_responses: dict,
     google_event_id: str = "",
+    location: str = "",
 ) -> Booking:
     booking = Booking(
         appointment_type_id=appt_type.id,
@@ -24,6 +25,7 @@ def create_booking(
         guest_phone=guest_phone,
         notes=notes,
         google_event_id=google_event_id,
+        location=location,
         status="confirmed",
     )
     booking.custom_field_responses = custom_responses

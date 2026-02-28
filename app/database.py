@@ -46,7 +46,23 @@ def init_db():
             ("rental_application_url", "TEXT NOT NULL DEFAULT ''"),
             ("rental_requirements", "TEXT NOT NULL DEFAULT '[]'"),
             ("owner_reminders_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("admin_initiated", "BOOLEAN NOT NULL DEFAULT 0"),
         ]:
             if col not in existing:
                 conn.execute(text(f"ALTER TABLE appointment_types ADD COLUMN {col} {definition}"))
+
+        existing_b = {row[1] for row in conn.execute(text("PRAGMA table_info(bookings)"))}
+        for col, definition in [
+            ("location", "TEXT NOT NULL DEFAULT ''"),
+        ]:
+            if col not in existing_b:
+                conn.execute(text(f"ALTER TABLE bookings ADD COLUMN {col} {definition}"))
+
+        existing_ar = {row[1] for row in conn.execute(text("PRAGMA table_info(availability_rules)"))}
+        for col, definition in [
+            ("appointment_type_id", "INTEGER REFERENCES appointment_types(id)"),
+        ]:
+            if col not in existing_ar:
+                conn.execute(text(f"ALTER TABLE availability_rules ADD COLUMN {col} {definition}"))
+
         conn.commit()

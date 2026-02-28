@@ -32,7 +32,12 @@ class AppointmentType(Base):
     rental_application_url: Mapped[str] = mapped_column(Text, default="")
     _rental_requirements: Mapped[str] = mapped_column("rental_requirements", Text, default="[]")
     owner_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    admin_initiated: Mapped[bool] = mapped_column(Boolean, default=False)
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("admin_initiated", False)
+        super().__init__(**kwargs)
 
     @property
     def custom_fields(self) -> list:
@@ -61,6 +66,7 @@ class AvailabilityRule(Base):
     start_time: Mapped[str] = mapped_column(String(5), nullable=False)  # "HH:MM"
     end_time: Mapped[str] = mapped_column(String(5), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    appointment_type_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("appointment_types.id"), nullable=True, default=None)
 
     @property
     def start_time_display(self) -> str:
@@ -97,6 +103,7 @@ class Booking(Base):
     google_event_id: Mapped[str] = mapped_column(String(200), default="")
     status: Mapped[str] = mapped_column(String(20), default="confirmed")  # confirmed | cancelled
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    location: Mapped[str] = mapped_column(Text, default="")
     appointment_type: Mapped["AppointmentType"] = relationship(back_populates="bookings")
 
     @property
