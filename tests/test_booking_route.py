@@ -154,3 +154,26 @@ def test_submit_booking_conflict_returns_error():
     assert response.status_code == 200
     assert "just booked" in response.text.lower() or "error" in response.text.lower()
     app.dependency_overrides.clear()
+
+
+def test_booking_has_reschedule_token():
+    client, Session = setup_client()
+    db = Session()
+    appt_id = db.query(AppointmentType).first().id
+    db.close()
+
+    client.post("/book", data={
+        "type_id": str(appt_id),
+        "start_datetime": "2025-06-01T10:00:00",
+        "guest_name": "Token Test",
+        "guest_email": "token@example.com",
+    })
+
+    from app.models import Booking
+    db2 = Session()
+    booking = db2.query(Booking).first()
+    assert booking is not None
+    assert len(booking.reschedule_token) == 36  # UUID4 string
+    assert "-" in booking.reschedule_token
+    db2.close()
+    app.dependency_overrides.clear()

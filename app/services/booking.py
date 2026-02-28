@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models import AppointmentType, Booking
@@ -27,6 +28,7 @@ def create_booking(
         google_event_id=google_event_id,
         location=location,
         status="confirmed",
+        reschedule_token=str(uuid.uuid4()),
     )
     booking.custom_field_responses = custom_responses
     db.add(booking)

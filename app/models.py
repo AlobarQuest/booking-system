@@ -100,6 +100,7 @@ class Booking(Base):
     status: Mapped[str] = mapped_column(String(20), default="confirmed")  # confirmed | cancelled
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     location: Mapped[str] = mapped_column(Text, default="")
+    reschedule_token: Mapped[str] = mapped_column(String(36), default="", index=True)
     appointment_type: Mapped["AppointmentType"] = relationship(back_populates="bookings")
 
     @property

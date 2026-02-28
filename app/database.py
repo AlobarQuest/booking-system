@@ -54,9 +54,19 @@ def init_db():
         existing_b = {row[1] for row in conn.execute(text("PRAGMA table_info(bookings)"))}
         for col, definition in [
             ("location", "TEXT NOT NULL DEFAULT ''"),
+            ("reschedule_token", "VARCHAR(36) NOT NULL DEFAULT ''"),
         ]:
             if col not in existing_b:
                 conn.execute(text(f"ALTER TABLE bookings ADD COLUMN {col} {definition}"))
+
+        # Backfill reschedule_token for existing bookings that have none
+        import uuid as _uuid
+        rows = conn.execute(text("SELECT id FROM bookings WHERE reschedule_token = ''")).fetchall()
+        for (row_id,) in rows:
+            conn.execute(
+                text("UPDATE bookings SET reschedule_token = :tok WHERE id = :id"),
+                {"tok": str(_uuid.uuid4()), "id": row_id},
+            )
 
         existing_ar = {row[1] for row in conn.execute(text("PRAGMA table_info(availability_rules)"))}
         for col, definition in [
