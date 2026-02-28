@@ -100,6 +100,102 @@ def _create_drive_time_blocks(
                     pass
 
 
+def _perform_reschedule(
+    db: Session,
+    booking: Booking,
+    new_start_dt: datetime,
+    settings,
+    base_url: str,
+) -> None:
+    """Reschedule a booking to a new start time.
+
+    Operation order (guards booking integrity):
+    1. Create new calendar event — raises ValueError on failure (booking unchanged).
+    2. Delete old calendar event — non-fatal (new event already exists).
+    3. Update booking record in DB.
+    4. Send new confirmation email — non-fatal.
+    base_url: scheme + host with no trailing slash, e.g. "https://booking.devonwatkins.com"
+    """
+    from app.services.calendar import CalendarService
+
+    appt_type = booking.appointment_type
+    new_end_dt = new_start_dt + timedelta(minutes=appt_type.duration_minutes)
+
+    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
+    start_utc = new_start_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
+    end_utc = new_end_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
+
+    refresh_token = get_setting(db, "google_refresh_token", "")
+    old_event_id = booking.google_event_id
+    new_event_id = ""
+
+    if refresh_token and settings.google_client_id:
+        cal = CalendarService(
+            settings.google_client_id,
+            settings.google_client_secret,
+            settings.google_redirect_uri,
+        )
+        description_lines = [
+            f"Guest: {booking.guest_name}",
+            f"Email: {booking.guest_email}",
+            f"Phone: {booking.guest_phone or 'not provided'}",
+            f"Notes: {booking.notes or 'none'}",
+            "(Rescheduled)",
+        ]
+        try:
+            new_event_id = cal.create_event(
+                refresh_token=refresh_token,
+                calendar_id=appt_type.calendar_id,
+                summary=appt_type.owner_event_title or f"{appt_type.name} — {booking.guest_name}",
+                description="\n".join(description_lines),
+                start=start_utc,
+                end=end_utc,
+                attendee_email=booking.guest_email if not appt_type.admin_initiated else "",
+                location=appt_type.location if not appt_type.admin_initiated else booking.location,
+                show_as=appt_type.show_as,
+                visibility=appt_type.visibility,
+                disable_reminders=not appt_type.owner_reminders_enabled,
+            )
+        except Exception as exc:
+            raise ValueError(f"Could not create a new calendar event: {exc}") from exc
+
+        # Delete old event after new one is confirmed (non-fatal)
+        if old_event_id:
+            try:
+                cal.delete_event(refresh_token, appt_type.calendar_id, old_event_id)
+            except Exception:
+                pass
+
+    # Update booking
+    booking.start_datetime = new_start_dt
+    booking.end_datetime = new_end_dt
+    booking.google_event_id = new_event_id
+    db.commit()
+
+    # Send new confirmation email (non-fatal; only if guest email present)
+    if booking.guest_email:
+        notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
+        if notify_enabled and settings.resend_api_key:
+            from app.services.email import send_guest_confirmation
+            reschedule_url = base_url + f"/reschedule/{booking.reschedule_token}"
+            try:
+                send_guest_confirmation(
+                    api_key=settings.resend_api_key,
+                    from_email=settings.from_email,
+                    guest_email=booking.guest_email,
+                    guest_name=booking.guest_name,
+                    appt_type_name=appt_type.guest_event_title or appt_type.name,
+                    start_dt=new_start_dt,
+                    end_dt=new_end_dt,
+                    custom_responses=booking.custom_field_responses,
+                    owner_name=get_setting(db, "owner_name", ""),
+                    template=get_setting(db, "email_guest_confirmation", ""),
+                    reschedule_url=reschedule_url,
+                )
+            except Exception:
+                pass
+
+
 @router.get("/reschedule/{token}/slots", response_class=HTMLResponse)
 def reschedule_slots(
     request: Request,
@@ -125,6 +221,92 @@ def reschedule_slots(
         "booking/reschedule_slots_partial.html",
         {"request": request, "slots": slot_data},
     )
+
+
+@router.get("/reschedule/{token}", response_class=HTMLResponse)
+def reschedule_page(
+    request: Request,
+    token: str,
+    db: Session = Depends(get_db),
+):
+    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+
+    min_advance = int(get_setting(db, "min_advance_hours", "24"))
+    max_future = int(get_setting(db, "max_future_days", "30"))
+    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
+    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
+    cutoff = now_local + timedelta(hours=min_advance)
+    too_close = booking.start_datetime <= cutoff
+
+    min_date = cutoff.date().isoformat()
+    max_date = (now_local + timedelta(days=max_future)).date().isoformat()
+    current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
+
+    return templates.TemplateResponse("booking/reschedule.html", {
+        "request": request,
+        "booking": booking,
+        "token": token,
+        "too_close": too_close,
+        "min_advance_hours": min_advance,
+        "min_date": min_date,
+        "max_date": max_date,
+        "current_display": current_display,
+    })
+
+
+@router.post("/reschedule/{token}", response_class=HTMLResponse)
+@limiter.limit("10/hour")
+async def submit_reschedule(
+    request: Request,
+    token: str,
+    db: Session = Depends(get_db),
+    _csrf_ok: None = Depends(require_csrf),
+):
+    form_data = await request.form()
+    start_datetime_str = str(form_data.get("start_datetime", "")).strip()
+
+    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+
+    try:
+        new_start_dt = datetime.fromisoformat(start_datetime_str)
+    except (ValueError, TypeError):
+        return templates.TemplateResponse("booking/reschedule.html", {
+            "request": request, "booking": booking, "token": token,
+            "too_close": False, "min_advance_hours": 24,
+            "min_date": "", "max_date": "",
+            "current_display": booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p"),
+            "error": "Invalid date/time. Please try again.",
+        })
+
+    min_advance = int(get_setting(db, "min_advance_hours", "24"))
+    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
+    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
+    cutoff = now_local + timedelta(hours=min_advance)
+
+    settings = get_settings()
+    base_url = str(request.base_url).rstrip('/')
+    try:
+        _perform_reschedule(db, booking, new_start_dt, settings, base_url)
+    except ValueError as exc:
+        return templates.TemplateResponse("booking/reschedule.html", {
+            "request": request, "booking": booking, "token": token,
+            "too_close": False, "min_advance_hours": min_advance,
+            "min_date": cutoff.date().isoformat(),
+            "max_date": (now_local + timedelta(days=int(get_setting(db, "max_future_days", "30")))).date().isoformat(),
+            "current_display": booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p"),
+            "error": str(exc),
+        })
+
+    new_display = new_start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
+    return templates.TemplateResponse("booking/reschedule_success.html", {
+        "request": request,
+        "booking": booking,
+        "new_display": new_display,
+    })
 
 
 @router.get("/uploads/{filename}")

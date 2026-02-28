@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Reschedule Appointment{% endblock %}
+{% block header_title %}Reschedule Your Appointment{% endblock %}
+{% block header_subtitle %}{{ booking.appointment_type.name }}{% endblock %}
+{% block content %}
+
+{% if error %}
+<div class="card static" style="border-color:#dc2626;background:#fef2f2;margin-bottom:1rem;">
+  <p style="color:#dc2626;">{{ error }}</p>
+</div>
+{% endif %}
+
+<div class="card static" style="margin-bottom:1.5rem;">
+  <h3 style="margin-bottom:.5rem;">Current Appointment</h3>
+  <p><strong>{{ booking.appointment_type.name }}</strong><br>{{ current_display }}</p>
+  {% if too_close %}
+  <p style="color:#dc2626;margin-top:.75rem;">
+    This appointment is within {{ min_advance_hours }} hours and cannot be rescheduled online.
+    Please contact us directly to make changes.
+  </p>
+  {% endif %}
+</div>
+
+{% if not too_close %}
+<div class="section">
+  <label class="section-label" for="reschedule-date">Choose a new date</label>
+  <input type="date" id="reschedule-date"
+    min="{{ min_date }}" max="{{ max_date }}"
+    hx-get="/reschedule/{{ token }}/slots"
+    hx-target="#slot-area"
+    hx-swap="innerHTML"
+    hx-trigger="change"
+    name="date">
+</div>
+
+<div id="slot-area" class="section"></div>
+
+<div id="confirmation-section" style="display:none;" class="section">
+  <div class="card" style="cursor:default;">
+    <h2>Confirm Reschedule</h2>
+    <p id="confirm-summary" style="color:#059669;font-weight:600;margin-bottom:1rem;"></p>
+    <form method="post" action="/reschedule/{{ token }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="start_datetime" id="confirm-datetime">
+      <div style="display:flex;gap:.75rem;margin-top:.25rem;">
+        <button type="submit" class="btn btn-primary">Confirm Reschedule</button>
+        <button type="button" class="btn btn-secondary" onclick="cancelRescheduleSelection()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function selectRescheduleSlot(value, display) {
+  var date = document.getElementById('reschedule-date').value;
+  document.getElementById('confirm-datetime').value = date + 'T' + value + ':00';
+  document.getElementById('confirm-summary').textContent = display;
+  document.getElementById('confirmation-section').style.display = 'block';
+  document.getElementById('confirmation-section').scrollIntoView({behavior: 'smooth'});
+  document.querySelectorAll('#slot-area .slot-btn').forEach(function(b) { b.classList.remove('selected'); });
+  if (event && event.target) { event.target.classList.add('selected'); }
+}
+function cancelRescheduleSelection() {
+  document.getElementById('confirmation-section').style.display = 'none';
+  document.querySelectorAll('#slot-area .slot-btn').forEach(function(b) { b.classList.remove('selected'); });
+}
+</script>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Rescheduled{% endblock %}
+{% block header_title %}Appointment Rescheduled{% endblock %}
+{% block header_subtitle %}{{ booking.appointment_type.name }}{% endblock %}
+{% block content %}
+<div class="confirmation-box">
+  <div class="confirmation-icon">✓</div>
+  <h2>You're Rescheduled!</h2>
+  <p>
+    <strong>{{ booking.appointment_type.name }}</strong><br>
+    {{ new_display }}<br><br>
+    An updated confirmation has been sent to<br>
+    <strong>{{ booking.guest_email }}</strong>
+  </p>
+</div>
+{% endblock %}
