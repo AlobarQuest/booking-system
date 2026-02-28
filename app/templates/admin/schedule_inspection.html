@@ -1,0 +1,104 @@
+{% extends "admin_base.html" %}
+{% block title %}Schedule Inspection{% endblock %}
+{% block content %}
+<h1>Schedule Inspection</h1>
+
+<div class="card" style="cursor:default;max-width:520px;margin-bottom:2rem;">
+  <h2 style="margin-bottom:1rem;">Find Available Times</h2>
+  {% if not admin_types %}
+  <p style="color:#dc2626;margin-bottom:1rem;">
+    No admin-initiated appointment types found.
+    <a href="/admin/appointment-types">Create one</a> under Appointment Types first.
+  </p>
+  {% endif %}
+  <form hx-get="/admin/inspection-slots"
+        hx-target="#slot-area"
+        hx-swap="innerHTML"
+        hx-indicator="#slot-loading">
+    <label>Appointment Type *
+      <select name="type_id" id="insp-type-id" required {% if not admin_types %}disabled{% endif %}>
+        {% for t in admin_types %}
+        <option value="{{ t.id }}">{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Inspection Address *
+      <input type="text" name="destination" id="insp-destination" required
+             placeholder="123 Main St, Atlanta GA 30301">
+    </label>
+    <label>Date *
+      <input type="date" name="date" id="insp-date" required min="{{ today }}">
+    </label>
+    <button type="submit" class="btn btn-primary" {% if not admin_types %}disabled{% endif %}>
+      Find Available Times
+    </button>
+    <span id="slot-loading" class="htmx-indicator" style="margin-left:.5rem;display:none;">Loading&hellip;</span>
+  </form>
+</div>
+
+<div id="slot-area" style="margin-bottom:2rem;"></div>
+
+<div id="confirmation-section" style="display:none;max-width:520px;">
+  <div class="card" style="cursor:default;">
+    <h2>Confirm Booking</h2>
+    <p id="confirm-summary" style="color:#059669;font-weight:600;margin-bottom:1rem;"></p>
+    <form method="post" action="/admin/schedule-inspection">
+      <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="type_id" id="confirm-type-id">
+      <input type="hidden" name="destination" id="confirm-destination">
+      <input type="hidden" name="start_datetime" id="confirm-start-datetime">
+      <label>Guest Name (optional)
+        <input type="text" name="guest_name" placeholder="Property owner / tenant name">
+      </label>
+      <label>Guest Email (optional)
+        <input type="email" name="guest_email" placeholder="owner@example.com">
+      </label>
+      <label>Guest Phone (optional)
+        <input type="tel" name="guest_phone" placeholder="(404) 555-0100">
+      </label>
+      <label>Notes (optional)
+        <textarea name="notes" rows="2" placeholder="Unit number, access instructions, etc."></textarea>
+      </label>
+      <div style="display:flex;gap:.75rem;margin-top:.25rem;">
+        <button type="submit" class="btn btn-primary">Confirm Booking</button>
+        <button type="button" class="btn btn-secondary" onclick="cancelInspectionSelection()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function selectInspectionSlot(value, display) {
+  var date = document.getElementById('ctx-date') ? document.getElementById('ctx-date').value : document.getElementById('insp-date').value;
+  document.getElementById('confirm-start-datetime').value = date + 'T' + value + ':00';
+  document.getElementById('confirm-type-id').value = document.getElementById('ctx-type-id') ? document.getElementById('ctx-type-id').value : document.getElementById('insp-type-id').value;
+  document.getElementById('confirm-destination').value = document.getElementById('ctx-destination') ? document.getElementById('ctx-destination').value : document.getElementById('insp-destination').value;
+  var addr = document.getElementById('insp-destination').value;
+  document.getElementById('confirm-summary').textContent = display + ' \u00b7 ' + addr;
+  document.getElementById('confirmation-section').style.display = 'block';
+  document.getElementById('confirmation-section').scrollIntoView({behavior: 'smooth'});
+  document.querySelectorAll('#slot-area .slot-btn').forEach(function(b) { b.classList.remove('slot-btn-selected'); });
+  if (event && event.target) { event.target.classList.add('slot-btn-selected'); }
+}
+
+function showManualTimeInput() {
+  var w = document.getElementById('manual-time-wrapper');
+  if (w) { w.style.display = 'flex'; }
+}
+
+function applyManualTime() {
+  var t = document.getElementById('manual-time-input').value;
+  if (!t) return;
+  var parts = t.split(':');
+  var h = parseInt(parts[0]);
+  var m = parts[1];
+  var display = (h % 12 || 12) + ':' + m + ' ' + (h < 12 ? 'AM' : 'PM');
+  selectInspectionSlot(t, display);
+}
+
+function cancelInspectionSelection() {
+  document.getElementById('confirmation-section').style.display = 'none';
+  document.querySelectorAll('#slot-area .slot-btn').forEach(function(b) { b.classList.remove('slot-btn-selected'); });
+}
+</script>
+{% endblock %}

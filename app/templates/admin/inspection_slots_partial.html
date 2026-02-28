@@ -1,0 +1,26 @@
+<input type="hidden" id="ctx-type-id" value="{{ type_id }}">
+<input type="hidden" id="ctx-destination" value="{{ destination }}">
+<input type="hidden" id="ctx-date" value="{{ date }}">
+
+{% if slots %}
+<div class="slots-grid" style="margin-bottom:1rem;">
+  {% for slot in slots %}
+  <button type="button" class="slot-btn"
+          onclick="selectInspectionSlot('{{ slot.value }}', '{{ slot.display }}')">
+    {{ slot.display }}
+  </button>
+  {% endfor %}
+</div>
+{% else %}
+<p class="no-slots">No available times on this date.</p>
+{% endif %}
+
+<div style="margin-top:.75rem;">
+  <a href="#" onclick="showManualTimeInput(); return false;" style="font-size:.9rem;color:#6366f1;">
+    Use a specific time instead &rarr;
+  </a>
+  <div id="manual-time-wrapper" style="display:none;margin-top:.5rem;display:flex;gap:.5rem;align-items:center;">
+    <input type="time" id="manual-time-input" step="900" style="width:auto;">
+    <button type="button" class="btn btn-secondary" onclick="applyManualTime()">Use this time</button>
+  </div>
+</div>
