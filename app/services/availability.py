@@ -164,10 +164,25 @@ def _build_free_windows(
     rules: list,
     blocked_periods: list,
     busy_intervals: list[tuple[datetime, datetime]],
+    appointment_type_id: int | None = None,
 ) -> list[tuple[time, time]]:
-    """Compute available time windows after subtracting blocked periods and busy intervals."""
+    """Compute available time windows after subtracting blocked periods and busy intervals.
+
+    If appointment_type_id is provided and any rules exist for that type, those
+    type-specific rules are used exclusively. Otherwise falls back to global rules
+    (rules with appointment_type_id IS None).
+    """
     day_of_week = target_date.weekday()  # 0=Monday
-    day_rules = [r for r in rules if r.day_of_week == day_of_week and r.active]
+
+    if appointment_type_id is not None:
+        type_rules = [r for r in rules if r.appointment_type_id == appointment_type_id and r.active]
+        if type_rules:
+            day_rules = [r for r in type_rules if r.day_of_week == day_of_week]
+        else:
+            day_rules = [r for r in rules if r.appointment_type_id is None and r.day_of_week == day_of_week and r.active]
+    else:
+        day_rules = [r for r in rules if r.appointment_type_id is None and r.day_of_week == day_of_week and r.active]
+
     if not day_rules:
         return []
 
@@ -196,9 +211,10 @@ def compute_slots(
     buffer_after_minutes: int,
     min_advance_hours: int,
     now: datetime,
+    appointment_type_id: int | None = None,
 ) -> list[time]:
     """Compute available appointment start times for a given date."""
-    windows = _build_free_windows(target_date, rules, blocked_periods, busy_intervals)
+    windows = _build_free_windows(target_date, rules, blocked_periods, busy_intervals, appointment_type_id)
     if not windows:
         return []
     slots = split_into_slots(windows, duration_minutes, buffer_before_minutes, buffer_after_minutes)

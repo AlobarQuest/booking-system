@@ -16,6 +16,35 @@ def make_rule(day: int, start: str, end: str) -> AvailabilityRule:
     return r
 
 
+def make_rule_for_type(day: int, start: str, end: str, type_id: int) -> AvailabilityRule:
+    r = AvailabilityRule()
+    r.day_of_week = day
+    r.start_time = start
+    r.end_time = end
+    r.active = True
+    r.appointment_type_id = type_id
+    return r
+
+
+def test_build_free_windows_uses_type_specific_rules_when_present():
+    """If type has its own rules, use only those — ignore global rules."""
+    global_rule = make_rule(0, "09:00", "17:00")               # global (appointment_type_id=None)
+    type_rule   = make_rule_for_type(0, "10:00", "12:00", type_id=5)  # type-specific
+    all_rules = [global_rule, type_rule]
+    windows = _build_free_windows(date(2025, 3, 3), all_rules, [], [], appointment_type_id=5)
+    # Should use 10:00-12:00, not 09:00-17:00
+    assert windows == [(time(10, 0), time(12, 0))]
+
+
+def test_build_free_windows_falls_back_to_global_when_no_type_rules():
+    """If type has no rules, fall back to global rules."""
+    global_rule = make_rule(0, "09:00", "17:00")  # global (appointment_type_id=None)
+    all_rules = [global_rule]
+    windows = _build_free_windows(date(2025, 3, 3), all_rules, [], [], appointment_type_id=99)
+    # No rules for type 99, so use global
+    assert windows == [(time(9, 0), time(17, 0))]
+
+
 def test_subtract_intervals_removes_busy_time():
     windows = [(time(9, 0), time(17, 0))]
     busy = [(datetime(2025, 3, 3, 12, 0), datetime(2025, 3, 3, 13, 0))]
