@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, date as date_type, timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -11,6 +11,7 @@ from app.database import get_db
 from app.dependencies import get_setting, require_csrf
 from app.limiter import limiter
 from app.models import AppointmentType, Booking
+from app.routers.slots import _compute_slots_for_type
 from app.services.booking import create_booking
 from app.services.drive_time import get_drive_time
 
@@ -97,6 +98,33 @@ def _create_drive_time_blocks(
                     )
                 except Exception:
                     pass
+
+
+@router.get("/reschedule/{token}/slots", response_class=HTMLResponse)
+def reschedule_slots(
+    request: Request,
+    token: str,
+    date: str,
+    db: Session = Depends(get_db),
+):
+    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+    try:
+        target_date = date_type.fromisoformat(date)
+    except ValueError:
+        return HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
+
+    slot_data = _compute_slots_for_type(
+        booking.appointment_type,
+        target_date,
+        db,
+        destination=booking.location,
+    )
+    return templates.TemplateResponse(
+        "booking/reschedule_slots_partial.html",
+        {"request": request, "slots": slot_data},
+    )
 
 
 @router.get("/uploads/{filename}")

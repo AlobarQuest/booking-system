@@ -23,25 +23,19 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
-@router.get("/slots", response_class=HTMLResponse)
-def get_slots(
-    request: Request,
-    type_id: int = Query(...),
-    date: str = Query(...),
-    destination: str = Query(""),
-    db: Session = Depends(get_db),
-):
+def _compute_slots_for_type(
+    appt_type,
+    target_date,
+    db,
+    destination: str = "",
+) -> list[dict]:
+    """Compute available time slots for a given appointment type and date.
+
+    Returns a list of {"value": "HH:MM", "display": "H:MM AM/PM"} dicts.
+    destination: override location (used for admin_initiated types).
+    """
     settings = get_settings()
-    appt_type = db.query(AppointmentType).filter_by(id=type_id, active=True).first()
-    if not appt_type:
-        return HTMLResponse("<p class='no-slots'>Appointment type not found.</p>")
-
     effective_location = destination if appt_type.admin_initiated else appt_type.location
-
-    try:
-        target_date = date_type.fromisoformat(date)
-    except ValueError:
-        return HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
 
     rules = db.query(AvailabilityRule).filter_by(active=True).all()
     blocked = db.query(BlockedPeriod).all()
@@ -49,12 +43,10 @@ def get_slots(
     refresh_token = get_setting(db, "google_refresh_token", "")
     tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
 
-    # Compute UTC day boundaries
     local_midnight = datetime.combine(target_date, time_type(0, 0)).replace(tzinfo=tz)
     day_start = local_midnight.astimezone(dt_timezone.utc).replace(tzinfo=None)
     day_end = (local_midnight + timedelta(days=1)).astimezone(dt_timezone.utc).replace(tzinfo=None)
 
-    # Load conflict calendars
     conflict_cals_raw = get_setting(db, "conflict_calendars", "[]")
     try:
         conflict_cals = _json.loads(conflict_cals_raw)
@@ -64,10 +56,9 @@ def get_slots(
     webcal_urls = [c["id"] for c in conflict_cals if c.get("type") == "webcal" and c.get("id")]
 
     busy_intervals = []
-    window_intervals = []  # populated only when calendar_window_enabled
-    local_day_events = []  # populated only when requires_drive_time
+    window_intervals = []
+    local_day_events = []
 
-    # Determine which Google Calendar IDs to query via freebusy
     google_ids_for_freebusy = set()
     google_ids_for_freebusy.add(appt_type.calendar_id)
     google_ids_for_freebusy.update(extra_google_ids)
@@ -79,10 +70,8 @@ def get_slots(
             settings.google_redirect_uri,
         )
 
-        # --- Calendar window: fetch full events and split into windows vs. busy ---
         if appt_type.calendar_window_enabled and appt_type.calendar_window_title:
             window_cal_id = appt_type.calendar_window_calendar_id or appt_type.calendar_id
-            # Handle this calendar manually — exclude from freebusy query
             google_ids_for_freebusy.discard(window_cal_id)
             try:
                 window_cal_events = cal.get_events_for_day(refresh_token, window_cal_id, day_start, day_end)
@@ -91,15 +80,12 @@ def get_slots(
                     local_start = ev["start"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                     local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                     if ev["summary"].lower().strip() == title_lower:
-                        # This is a valid booking window
                         window_intervals.append((local_start.time(), local_end.time()))
                     else:
-                        # Non-matching event is still busy
                         busy_intervals.append((local_start, local_end))
             except Exception:
                 pass
 
-        # --- Freebusy for remaining Google calendars ---
         if google_ids_for_freebusy:
             try:
                 utc_busy = cal.get_busy_intervals(refresh_token, list(google_ids_for_freebusy), day_start, day_end)
@@ -110,7 +96,6 @@ def get_slots(
             except Exception:
                 pass
 
-        # --- Drive time: fetch full events to find preceding event location ---
         if appt_type.requires_drive_time and effective_location:
             try:
                 day_events_utc = cal.get_events_for_day(refresh_token, "primary", day_start, day_end)
@@ -121,7 +106,6 @@ def get_slots(
             except Exception:
                 pass
 
-    # Fetch webcal/ICS conflict calendars
     for webcal_url in webcal_urls:
         try:
             from app.services.calendar import fetch_webcal_events
@@ -130,20 +114,16 @@ def get_slots(
                 local_start = ev["start"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                 local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                 busy_intervals.append((local_start, local_end))
-                # Include located events in drive time calculation
                 if appt_type.requires_drive_time and effective_location and ev["location"]:
                     local_day_events.append({**ev, "start": local_start, "end": local_end})
         except Exception:
             pass
 
-    # Build availability windows
     windows = _build_free_windows(target_date, rules, blocked, busy_intervals, appointment_type_id=appt_type.id)
 
-    # Apply calendar window constraint (intersect with matching calendar events)
     if window_intervals:
         windows = intersect_windows(windows, window_intervals)
 
-    # Apply drive time trimming
     if appt_type.requires_drive_time and effective_location:
         home_address = get_setting(db, "home_address", "")
         windows = trim_windows_for_drive_time(
@@ -153,7 +133,6 @@ def get_slots(
             db=db,
         )
 
-    # Generate slots and apply advance notice filter
     now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
     slots = split_into_slots(
         windows, appt_type.duration_minutes,
@@ -161,10 +140,29 @@ def get_slots(
     )
     slots = filter_by_advance_notice(slots, target_date, min_advance, now_local)
 
-    slot_data = [
+    return [
         {"value": s.strftime("%H:%M"), "display": s.strftime("%-I:%M %p")}
         for s in slots
     ]
+
+
+@router.get("/slots", response_class=HTMLResponse)
+def get_slots(
+    request: Request,
+    type_id: int = Query(...),
+    date: str = Query(...),
+    destination: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    appt_type = db.query(AppointmentType).filter_by(id=type_id, active=True).first()
+    if not appt_type:
+        return HTMLResponse("<p class='no-slots'>Appointment type not found.</p>")
+    try:
+        target_date = date_type.fromisoformat(date)
+    except ValueError:
+        return HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
+
+    slot_data = _compute_slots_for_type(appt_type, target_date, db, destination=destination)
     return templates.TemplateResponse(
         "booking/slots_partial.html",
         {"request": request, "slots": slot_data, "type_id": type_id, "date": date},
