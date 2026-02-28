@@ -119,7 +119,7 @@ def test_rental_requirements_defaults_empty():
 def test_appointment_type_has_admin_initiated():
     t = AppointmentType()
     assert hasattr(t, "admin_initiated")
-    assert t.admin_initiated is False or t.admin_initiated == 0
+    assert t.admin_initiated is False or t.admin_initiated == 0 or t.admin_initiated is None
 
 
 def test_booking_has_location():

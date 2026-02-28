@@ -35,10 +35,6 @@ class AppointmentType(Base):
     admin_initiated: Mapped[bool] = mapped_column(Boolean, default=False)
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
 
-    def __init__(self, **kwargs):
-        kwargs.setdefault("admin_initiated", False)
-        super().__init__(**kwargs)
-
     @property
     def custom_fields(self) -> list:
         return json.loads(self._custom_fields)
