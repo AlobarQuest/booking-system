@@ -146,3 +146,57 @@ def test_slots_calendar_window_filters_slots(client):
         resp = client.get(f"/slots?type_id={appt.id}&date=2025-03-03")
     assert resp.status_code == 200
     assert "no-slots" in resp.text or resp.text.count("slot") == 0
+
+
+def test_slots_uses_destination_for_admin_initiated_type():
+    """For admin_initiated types, the destination query param is used for drive time (not appt_type.location)."""
+    from unittest.mock import patch
+    from app.models import AppointmentType, AvailabilityRule
+    from app.database import Base, get_db
+    from app.main import app
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    appt = AppointmentType(
+        name="Inspection",
+        duration_minutes=30,
+        buffer_before_minutes=0,
+        buffer_after_minutes=0,
+        calendar_id="primary",
+        active=True,
+        admin_initiated=True,
+        requires_drive_time=True,
+        color="#fff",
+        description="",
+    )
+    appt._custom_fields = "[]"
+    db.add(appt)
+    db.add(AvailabilityRule(day_of_week=0, start_time="09:00", end_time="17:00", active=True))
+    db.commit()
+    appt_id = appt.id
+    db.close()
+
+    def override():
+        s = Session()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_db] = override
+    client = TestClient(app)
+
+    with patch("app.routers.slots.datetime") as mock_dt, \
+         patch("app.services.availability.get_drive_time", return_value=0):
+        mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
+        mock_dt.combine = datetime.combine
+        resp = client.get(f"/slots?type_id={appt_id}&date=2025-03-03&destination=123+Main+St+Atlanta")
+    assert resp.status_code == 200
+    assert "9:00 AM" in resp.text or "slot-btn" in resp.text  # slots rendered
+    app.dependency_overrides.clear()

@@ -28,12 +28,15 @@ def get_slots(
     request: Request,
     type_id: int = Query(...),
     date: str = Query(...),
+    destination: str = Query(""),
     db: Session = Depends(get_db),
 ):
     settings = get_settings()
     appt_type = db.query(AppointmentType).filter_by(id=type_id, active=True).first()
     if not appt_type:
         return HTMLResponse("<p class='no-slots'>Appointment type not found.</p>")
+
+    effective_location = destination if appt_type.admin_initiated else appt_type.location
 
     try:
         target_date = date_type.fromisoformat(date)
@@ -108,7 +111,7 @@ def get_slots(
                 pass
 
         # --- Drive time: fetch full events to find preceding event location ---
-        if appt_type.requires_drive_time and appt_type.location:
+        if appt_type.requires_drive_time and effective_location:
             try:
                 day_events_utc = cal.get_events_for_day(refresh_token, "primary", day_start, day_end)
                 for ev in day_events_utc:
@@ -128,24 +131,24 @@ def get_slots(
                 local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                 busy_intervals.append((local_start, local_end))
                 # Include located events in drive time calculation
-                if appt_type.requires_drive_time and appt_type.location and ev["location"]:
+                if appt_type.requires_drive_time and effective_location and ev["location"]:
                     local_day_events.append({**ev, "start": local_start, "end": local_end})
         except Exception:
             pass
 
     # Build availability windows
-    windows = _build_free_windows(target_date, rules, blocked, busy_intervals)
+    windows = _build_free_windows(target_date, rules, blocked, busy_intervals, appointment_type_id=appt_type.id)
 
     # Apply calendar window constraint (intersect with matching calendar events)
     if window_intervals:
         windows = intersect_windows(windows, window_intervals)
 
     # Apply drive time trimming
-    if appt_type.requires_drive_time and appt_type.location:
+    if appt_type.requires_drive_time and effective_location:
         home_address = get_setting(db, "home_address", "")
         windows = trim_windows_for_drive_time(
             windows, target_date, local_day_events,
-            destination=appt_type.location,
+            destination=effective_location,
             home_address=home_address,
             db=db,
         )
