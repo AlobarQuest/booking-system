@@ -11,6 +11,7 @@ Personal appointment booking system with a public booking interface and admin pa
 - Google Calendar integration (conflict detection + event creation)
 - Webcal/ICS feed support for multi-calendar conflict checking
 - Drive time buffers via Google Maps Distance Matrix API
+- Drive time block events on owner's calendar (automatic "BLOCK" events before/after appointments)
 - Calendar-window availability mode (restrict slots to specific calendar events)
 - Email notifications via Resend (confirmation to guest, alert to owner)
 - Editable email templates in admin panel

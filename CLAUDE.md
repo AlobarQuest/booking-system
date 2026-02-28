@@ -115,6 +115,8 @@ Both redirect URIs must also be registered in Google Cloud Console → APIs & Se
 - **Booking UX** — "Schedule Tour" green button replaces whole-card click; card list collapses and shows selected-type banner with full card content cloned into it; "← Change" to go back
 - **Rental Application Link** — `rental_application_url` field on appointment types; "Rental Application" button on booking page opens URL in new tab
 - **Security remediation** — CSRF tokens on all POST forms (`require_csrf` dependency + session-backed `_csrf` hidden field); rate-limited admin login/setup (5/min); security response headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy); HTML-escaped guest data in emails; `javascript:` / non-HTTP URL scheme rejection on listing/rental URLs; OAuth state parameter validation
+- **Mobile booking UI** — responsive card layout: photo stacks above text on mobile (`flex-direction: column-reverse`); reduced header padding; full-width date picker on mobile
+- **Drive time block events** — when a booking is confirmed for an appointment type with `requires_drive_time=True`, creates "BLOCK - Drive Time for …" calendar events on the owner's calendar: one before the appointment (from preceding event location or `home_address` setting) and one after (to the next event's location), each within a ±1-hour window; implemented in `_create_drive_time_blocks()` in `app/routers/booking.py`
 
 ---
 
