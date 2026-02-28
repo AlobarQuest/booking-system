@@ -53,6 +53,77 @@ def test_schedule_inspection_page_loads(insp_client):
     assert "Schedule Inspection" in resp.text
 
 
+def test_schedule_inspection_creates_booking(insp_client):
+    """POST creates a Booking with the inspection address stored as location."""
+    from unittest.mock import patch
+    from app.models import Booking
+    client, SessionFactory = insp_client
+
+    db = SessionFactory()
+    t = AppointmentType(
+        name="Inspection", duration_minutes=30, active=True,
+        admin_initiated=True, requires_drive_time=True, color="#fff",
+        calendar_id="primary", description="", owner_event_title="Inspection",
+    )
+    t._custom_fields = "[]"
+    db.add(t)
+    db.commit()
+    type_id = t.id
+    db.close()
+
+    with patch("app.routers.admin.CalendarService"):
+        resp = client.post("/admin/schedule-inspection", data={
+            "type_id": str(type_id),
+            "destination": "456 Oak Ave, Atlanta GA 30318",
+            "start_datetime": "2025-03-03T10:00:00",
+            "guest_name": "Jane Smith",
+            "guest_email": "",
+            "guest_phone": "",
+            "notes": "Unit 4B",
+        })
+    assert resp.status_code == 302
+
+    db = SessionFactory()
+    booking = db.query(Booking).first()
+    assert booking is not None
+    assert booking.location == "456 Oak Ave, Atlanta GA 30318"
+    assert booking.guest_name == "Jane Smith"
+    assert booking.notes == "Unit 4B"
+    assert booking.status == "confirmed"
+    db.close()
+
+
+def test_schedule_inspection_no_email_sent(insp_client):
+    """POST never sends guest email, even when guest_email is provided."""
+    from unittest.mock import patch, MagicMock
+    client, SessionFactory = insp_client
+
+    db = SessionFactory()
+    t = AppointmentType(
+        name="Inspection", duration_minutes=30, active=True,
+        admin_initiated=True, requires_drive_time=True, color="#fff",
+        calendar_id="primary", description="", owner_event_title="Inspection",
+    )
+    t._custom_fields = "[]"
+    db.add(t)
+    db.commit()
+    type_id = t.id
+    db.close()
+
+    with patch("app.routers.admin.CalendarService"), \
+         patch("app.services.email.send_guest_confirmation") as mock_email:
+        client.post("/admin/schedule-inspection", data={
+            "type_id": str(type_id),
+            "destination": "456 Oak Ave",
+            "start_datetime": "2025-03-03T10:00:00",
+            "guest_name": "Jane",
+            "guest_email": "jane@example.com",
+            "guest_phone": "",
+            "notes": "",
+        })
+    mock_email.assert_not_called()
+
+
 def test_inspection_slots_returns_html(insp_client):
     """GET /admin/inspection-slots returns slot HTML for a valid admin-initiated type and date."""
     client, SessionFactory = insp_client

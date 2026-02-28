@@ -737,3 +737,114 @@ def inspection_slots(
         "date": date,
         "destination": destination,
     })
+
+
+@router.post("/schedule-inspection")
+async def submit_inspection(
+    request: Request,
+    db: Session = Depends(get_db),
+    _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
+):
+    from datetime import timedelta, timezone as dt_timezone
+    from zoneinfo import ZoneInfo
+    from app.services.booking import create_booking
+    from app.services.calendar import CalendarService
+    from app.routers.booking import _create_drive_time_blocks
+
+    form = await request.form()
+    type_id_str = str(form.get("type_id", ""))
+    destination = str(form.get("destination", "")).strip()
+    start_datetime_str = str(form.get("start_datetime", ""))
+    guest_name = str(form.get("guest_name", "")).strip()
+    guest_email = str(form.get("guest_email", "")).strip()
+    guest_phone = str(form.get("guest_phone", "")).strip()
+    notes = str(form.get("notes", "")).strip()
+
+    if not type_id_str or not destination or not start_datetime_str:
+        _flash(request, "Missing required fields.", "error")
+        return RedirectResponse("/admin/schedule-inspection", status_code=302)
+
+    try:
+        type_id = int(type_id_str)
+        start_dt = datetime.fromisoformat(start_datetime_str)
+    except (ValueError, TypeError):
+        _flash(request, "Invalid data.", "error")
+        return RedirectResponse("/admin/schedule-inspection", status_code=302)
+
+    appt_type = db.query(AppointmentType).filter_by(id=type_id, active=True, admin_initiated=True).first()
+    if not appt_type:
+        _flash(request, "Appointment type not found.", "error")
+        return RedirectResponse("/admin/schedule-inspection", status_code=302)
+
+    end_dt = start_dt + timedelta(minutes=appt_type.duration_minutes)
+
+    booking = create_booking(
+        db=db,
+        appt_type=appt_type,
+        start_dt=start_dt,
+        end_dt=end_dt,
+        guest_name=guest_name or "N/A",
+        guest_email=guest_email,
+        guest_phone=guest_phone,
+        notes=notes,
+        custom_responses={},
+        location=destination,
+    )
+
+    settings = get_settings()
+    refresh_token = get_setting(db, "google_refresh_token", "")
+    if refresh_token and settings.google_client_id:
+        cal = CalendarService(
+            settings.google_client_id,
+            settings.google_client_secret,
+            settings.google_redirect_uri,
+        )
+        tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
+        start_utc = start_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
+        end_utc = end_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
+
+        description_lines = [f"Inspection at: {destination}"]
+        if guest_name:
+            description_lines.append(f"Contact: {guest_name}")
+        if guest_email:
+            description_lines.append(f"Email: {guest_email}")
+        if guest_phone:
+            description_lines.append(f"Phone: {guest_phone}")
+        if notes:
+            description_lines.append(f"Notes: {notes}")
+
+        try:
+            event_id = cal.create_event(
+                refresh_token=refresh_token,
+                calendar_id=appt_type.calendar_id,
+                summary=appt_type.owner_event_title or f"Inspection — {destination}",
+                description="\n".join(description_lines),
+                start=start_utc,
+                end=end_utc,
+                location=destination,
+                show_as=appt_type.show_as,
+                visibility=appt_type.visibility,
+                disable_reminders=True,
+            )
+            booking.google_event_id = event_id
+            db.commit()
+        except Exception:
+            pass
+
+        home_address = get_setting(db, "home_address", "")
+        _create_drive_time_blocks(
+            cal=cal,
+            refresh_token=refresh_token,
+            calendar_id=appt_type.calendar_id,
+            appt_name=appt_type.name,
+            appt_location=destination,
+            start_utc=start_utc,
+            end_utc=end_utc,
+            home_address=home_address,
+            db=db,
+        )
+
+    start_display = start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
+    _flash(request, f"Inspection booked for {start_display} at {destination}.")
+    return RedirectResponse("/admin/schedule-inspection", status_code=302)
