@@ -12,11 +12,91 @@ from app.dependencies import get_setting, require_csrf
 from app.limiter import limiter
 from app.models import AppointmentType, Booking
 from app.services.booking import create_booking
+from app.services.drive_time import get_drive_time
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 from app.dependencies import get_csrf_token as _get_csrf_token
 templates.env.globals["csrf_token"] = _get_csrf_token
+
+
+def _create_drive_time_blocks(
+    cal,
+    refresh_token: str,
+    calendar_id: str,
+    appt_name: str,
+    appt_location: str,
+    start_utc,
+    end_utc,
+    home_address: str,
+    db,
+) -> None:
+    """Create BLOCK calendar events for drive time before and after the appointment.
+
+    All datetimes must be naive UTC. Failures are fully silent — this is a
+    best-effort calendar annotation, never blocking the booking confirmation.
+    """
+    window_start = start_utc - timedelta(hours=1)
+    window_end = end_utc + timedelta(hours=1)
+
+    try:
+        nearby_events = cal.get_events_for_day(refresh_token, calendar_id, window_start, window_end)
+    except Exception:
+        return
+
+    # --- Before block: drive TO this appointment ---
+    preceding = None
+    for ev in nearby_events:
+        if window_start <= ev["end"] <= start_utc:
+            if preceding is None or ev["end"] > preceding["end"]:
+                preceding = ev
+
+    origin = (preceding.get("location") or "").strip() if preceding else ""
+    if not origin:
+        origin = home_address
+
+    if origin and origin.lower() != appt_location.lower():
+        drive_mins = get_drive_time(origin, appt_location, db)
+        if drive_mins > 0:
+            try:
+                cal.create_event(
+                    refresh_token=refresh_token,
+                    calendar_id=calendar_id,
+                    summary=f"BLOCK - Drive Time for {appt_name}",
+                    description="",
+                    start=start_utc - timedelta(minutes=drive_mins),
+                    end=start_utc,
+                    show_as="busy",
+                    disable_reminders=True,
+                )
+            except Exception:
+                pass
+
+    # --- After block: drive FROM this appointment to the next one ---
+    following = None
+    for ev in nearby_events:
+        if end_utc <= ev["start"] <= window_end:
+            if following is None or ev["start"] < following["start"]:
+                following = ev
+
+    if following:
+        dest = (following.get("location") or "").strip()
+        if dest and dest.lower() != appt_location.lower():
+            drive_mins = get_drive_time(appt_location, dest, db)
+            if drive_mins > 0:
+                try:
+                    cal.create_event(
+                        refresh_token=refresh_token,
+                        calendar_id=calendar_id,
+                        summary=f"BLOCK - Drive Time for {following['summary']}",
+                        description="",
+                        start=end_utc,
+                        end=end_utc + timedelta(minutes=drive_mins),
+                        show_as="busy",
+                        disable_reminders=True,
+                    )
+                except Exception:
+                    pass
 
 
 @router.get("/uploads/{filename}")
