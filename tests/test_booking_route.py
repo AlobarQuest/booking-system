@@ -169,11 +169,11 @@ def test_booking_has_reschedule_token():
         "guest_email": "token@example.com",
     })
 
+    import uuid as _uuid
     from app.models import Booking
     db2 = Session()
     booking = db2.query(Booking).first()
     assert booking is not None
-    assert len(booking.reschedule_token) == 36  # UUID4 string
-    assert "-" in booking.reschedule_token
+    _uuid.UUID(booking.reschedule_token, version=4)  # raises ValueError if invalid UUID4
     db2.close()
     app.dependency_overrides.clear()
