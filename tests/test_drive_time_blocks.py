@@ -263,3 +263,79 @@ def test_after_block_uses_earliest_following_event():
     assert len(after_calls) == 1
     assert after_calls[0].kwargs["start"] == end_utc
     assert after_calls[0].kwargs["end"] == end_utc + timedelta(minutes=15)
+
+
+def test_submit_booking_calls_drive_time_blocks_when_requires_drive_time():
+    """submit_booking calls _create_drive_time_blocks when requires_drive_time is True."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from fastapi.testclient import TestClient
+    from app.database import Base, get_db
+    from app.main import app
+    from app.models import AppointmentType
+    from app.dependencies import require_csrf
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    appt = AppointmentType(
+        name="Property Showing",
+        duration_minutes=30,
+        buffer_before_minutes=0,
+        buffer_after_minutes=0,
+        calendar_id="primary",
+        active=True,
+        color="#3b82f6",
+        description="",
+        requires_drive_time=True,
+        location="456 Property Ln",
+    )
+    appt._custom_fields = "[]"
+    db.add(appt)
+    db.commit()
+    appt_id = appt.id
+    db.close()
+
+    def override():
+        s = Session()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_db] = override
+    app.dependency_overrides[require_csrf] = lambda: None
+
+    with patch("app.routers.booking._create_drive_time_blocks") as mock_blocks:
+        with patch("app.routers.booking.get_settings") as mock_settings:
+            from app.config import Settings
+            mock_settings.return_value = Settings(
+                google_client_id="fake-id",
+                google_client_secret="fake-secret",
+                google_redirect_uri="http://localhost/callback",
+            )
+            with patch("app.services.calendar.CalendarService.create_event", return_value="evt-1"):
+                from app.dependencies import set_setting
+                s = Session()
+                set_setting(s, "google_refresh_token", "fake-token")
+                set_setting(s, "timezone", "America/New_York")
+                s.close()
+
+                client = TestClient(app)
+                response = client.post("/book", data={
+                    "type_id": str(appt_id),
+                    "start_datetime": "2026-03-01T10:00:00",
+                    "guest_name": "Alice",
+                    "guest_email": "alice@example.com",
+                })
+
+    assert response.status_code == 200
+    assert mock_blocks.called
+
+    app.dependency_overrides.clear()

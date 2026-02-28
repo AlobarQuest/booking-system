@@ -271,6 +271,21 @@ async def submit_booking(
         except Exception:
             pass  # Booking saved; calendar failure is non-fatal
 
+        # Drive time block events (owner-only, non-fatal)
+        if appt_type.requires_drive_time and appt_type.location:
+            home_address = get_setting(db, "home_address", "")
+            _create_drive_time_blocks(
+                cal=cal,
+                refresh_token=refresh_token,
+                calendar_id=appt_type.calendar_id,
+                appt_name=appt_type.name,
+                appt_location=appt_type.location,
+                start_utc=start_utc,
+                end_utc=end_utc,
+                home_address=home_address,
+                db=db,
+            )
+
     # Email notifications
     notify_email = get_setting(db, "notify_email", "")
     notifications_enabled = get_setting(db, "notifications_enabled", "true") == "true"
