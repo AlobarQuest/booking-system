@@ -293,6 +293,7 @@ async def submit_booking(
     guest_appt_name = appt_type.guest_event_title or appt_type.name
     if notifications_enabled and settings.resend_api_key:
         from app.services.email import send_guest_confirmation, send_admin_alert
+        reschedule_url = str(request.base_url).rstrip('/') + f"/reschedule/{booking.reschedule_token}"
         try:
             send_guest_confirmation(
                 api_key=settings.resend_api_key,
@@ -305,6 +306,7 @@ async def submit_booking(
                 custom_responses=custom_responses,
                 owner_name=owner_name,
                 template=get_setting(db, "email_guest_confirmation", ""),
+                reschedule_url=reschedule_url,
             )
         except Exception:
             pass

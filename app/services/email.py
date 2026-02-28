@@ -14,6 +14,7 @@ _GUEST_CONFIRMATION_DEFAULT = """\
 <p>Your <strong>{appt_type}</strong> is confirmed:</p>
 <p><strong>Date/Time:</strong> {date_time}</p>
 {custom_fields}
+<p>Need to reschedule? <a href="{reschedule_url}">Click here to pick a new time</a></p>
 <p>If you need to cancel, please reply to this email.</p>
 <p>— {owner_name}</p>"""
 
@@ -46,6 +47,7 @@ def send_guest_confirmation(
     custom_responses: dict,
     owner_name: str,
     template: str = "",
+    reschedule_url: str = "",
 ):
     resend.api_key = api_key
     custom_html = "".join(
@@ -59,6 +61,7 @@ def send_guest_confirmation(
             date_time=_format_dt(start_dt),
             owner_name=escape(owner_name),
             custom_fields=custom_html,
+            reschedule_url=reschedule_url,
         )
     except (KeyError, ValueError, IndexError):
         html = _GUEST_CONFIRMATION_DEFAULT.format(
@@ -67,6 +70,7 @@ def send_guest_confirmation(
             date_time=_format_dt(start_dt),
             owner_name=escape(owner_name),
             custom_fields=custom_html,
+            reschedule_url=reschedule_url,
         )
     resend.Emails.send({
         "from": from_email,

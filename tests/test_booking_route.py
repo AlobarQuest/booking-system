@@ -177,3 +177,32 @@ def test_booking_has_reschedule_token():
     _uuid.UUID(booking.reschedule_token, version=4)  # raises ValueError if invalid UUID4
     db2.close()
     app.dependency_overrides.clear()
+
+
+def test_confirmation_email_includes_reschedule_link():
+    from unittest.mock import patch
+    from app.config import Settings
+
+    client, Session = setup_client()
+    db = Session()
+    appt_id = db.query(AppointmentType).first().id
+    db.close()
+
+    mock_settings = Settings(
+        resend_api_key="fake-key",
+        from_email="from@example.com",
+    )
+
+    with patch("app.routers.booking.get_settings", return_value=mock_settings), \
+         patch("app.services.email.resend.Emails.send") as mock_send:
+        client.post("/book", data={
+            "type_id": str(appt_id),
+            "start_datetime": "2025-06-01T11:00:00",
+            "guest_name": "Link Test",
+            "guest_email": "link@example.com",
+        })
+
+    assert mock_send.called
+    sent_html = mock_send.call_args[0][0]["html"]
+    assert "/reschedule/" in sent_html
+    app.dependency_overrides.clear()
