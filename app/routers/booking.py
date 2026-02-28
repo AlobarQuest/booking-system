@@ -122,7 +122,7 @@ def booking_page(request: Request, db: Session = Depends(get_db)):
 
 
 def _booking_page(request: Request, db: Session):
-    appointment_types = db.query(AppointmentType).filter_by(active=True).all()
+    appointment_types = db.query(AppointmentType).filter_by(active=True, admin_initiated=False).all()
     min_advance = int(get_setting(db, "min_advance_hours", "24"))
     max_future = int(get_setting(db, "max_future_days", "30"))
     min_date = (datetime.utcnow() + timedelta(hours=min_advance)).date().isoformat()

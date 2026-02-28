@@ -84,3 +84,24 @@ def test_booking_page_card_content_has_class(booking_client):
     assert resp.status_code == 200
     assert 'class="card-content"' in resp.text
     assert 'class="card-text"' in resp.text
+
+
+def test_admin_initiated_type_hidden_from_public_booking(client):
+    """AppointmentType with admin_initiated=True must not appear on the public booking page."""
+    from app.models import AppointmentType
+    from app.database import get_db
+    db = next(client.app.dependency_overrides[get_db]())
+    t = AppointmentType(
+        name="Damage Inspection",
+        duration_minutes=30,
+        active=True,
+        admin_initiated=True,
+        color="#fff",
+        description="",
+    )
+    t._custom_fields = "[]"
+    db.add(t)
+    db.commit()
+    resp = client.get("/book")
+    assert resp.status_code == 200
+    assert "Damage Inspection" not in resp.text
