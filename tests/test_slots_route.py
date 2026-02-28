@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, time, timezone as dt_timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -193,10 +193,14 @@ def test_slots_uses_destination_for_admin_initiated_type():
     client = TestClient(app)
 
     with patch("app.routers.slots.datetime") as mock_dt, \
-         patch("app.services.availability.get_drive_time", return_value=0):
+         patch("app.services.availability.get_drive_time", return_value=20), \
+         patch("app.routers.slots.trim_windows_for_drive_time", return_value=[(time(9, 0), time(17, 0))]) as mock_trim:
         mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
         resp = client.get(f"/slots?type_id={appt_id}&date=2025-03-03&destination=123+Main+St+Atlanta")
     assert resp.status_code == 200
-    assert "9:00 AM" in resp.text or "slot-btn" in resp.text  # slots rendered
+    # Verify destination param was passed to trim_windows_for_drive_time, not appt_type.location
+    mock_trim.assert_called_once()
+    call_kwargs = mock_trim.call_args
+    assert call_kwargs.kwargs.get("destination") == "123 Main St Atlanta"
     app.dependency_overrides.clear()
