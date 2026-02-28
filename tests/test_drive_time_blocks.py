@@ -234,3 +234,32 @@ def test_before_block_uses_most_recent_preceding_event():
     # The block ends at start_utc and starts 10 min before
     assert before_calls[0].kwargs["end"] == start_utc
     assert before_calls[0].kwargs["start"] == start_utc - timedelta(minutes=10)
+
+
+def test_after_block_uses_earliest_following_event():
+    """When multiple events follow the appointment, the one with the earliest start time is used."""
+    cal = _make_cal()
+    start_utc = datetime(2026, 3, 1, 15, 0)
+    end_utc = start_utc + timedelta(minutes=30)
+
+    earlier_following = {
+        "start": end_utc + timedelta(minutes=10),
+        "end": end_utc + timedelta(minutes=70),
+        "summary": "Earlier Next",
+        "location": "333 Right Rd",
+    }
+    later_following = {
+        "start": end_utc + timedelta(minutes=40),
+        "end": end_utc + timedelta(hours=2),
+        "summary": "Later Next",
+        "location": "444 Wrong Rd",
+    }
+    _run(cal, nearby_events=[earlier_following, later_following], drive_minutes=15,
+         start_utc=start_utc, end_utc=end_utc, home_address="")
+
+    # The after block should reference "Earlier Next" (earliest start), not "Later Next"
+    after_calls = [c for c in cal.create_event.call_args_list
+                   if "Drive Time for Earlier Next" in c.kwargs.get("summary", "")]
+    assert len(after_calls) == 1
+    assert after_calls[0].kwargs["start"] == end_utc
+    assert after_calls[0].kwargs["end"] == end_utc + timedelta(minutes=15)
