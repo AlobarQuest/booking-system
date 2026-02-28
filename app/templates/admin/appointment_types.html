@@ -238,59 +238,60 @@
       </small>
     </div>
 
-    <div id="admin-fields" style="display:{% if edit_type and edit_type.admin_initiated %}block{% else %}none{% endif %};">
-      {% if edit_type and edit_type.admin_initiated %}
-      <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
-      <h3 style="font-size:.95rem;font-weight:600;margin-bottom:.75rem;">Inspection Availability Windows</h3>
-      <small style="color:#64748b;display:block;margin-bottom:.75rem;">
-        These replace global availability rules for this type. Leave empty to use global rules.
-      </small>
-      {% if type_rules %}
-      <table style="margin-bottom:1rem;">
-        <thead><tr><th>Day</th><th>Start</th><th>End</th><th></th></tr></thead>
-        <tbody>
-        {% for rule in type_rules %}
-        <tr>
-          <td>{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][rule.day_of_week] }}</td>
-          <td>{{ rule.start_time_display }}</td>
-          <td>{{ rule.end_time_display }}</td>
-          <td>
-            <form method="post" action="/admin/appointment-types/{{ edit_type.id }}/rules/{{ rule.id }}/delete" style="display:inline;">
-              <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
-              <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Delete</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p style="color:#64748b;margin-bottom:1rem;">No windows set. Using global availability rules.</p>
-      {% endif %}
-      <div class="card" style="cursor:default;max-width:400px;margin-bottom:1rem;">
-        <h4 style="margin-bottom:.75rem;">Add Window</h4>
-        <form method="post" action="/admin/appointment-types/{{ edit_type.id }}/rules">
-          <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
-          <label>Day
-            <select name="day_of_week">
-              {% for i, d in [('0','Monday'),('1','Tuesday'),('2','Wednesday'),('3','Thursday'),('4','Friday'),('5','Saturday'),('6','Sunday')] %}
-              <option value="{{ i }}">{{ d }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>Start Time <input type="time" name="start_time" value="08:00" required></label>
-          <label>End Time <input type="time" name="end_time" value="17:00" required></label>
-          <button type="submit" class="btn btn-primary" style="margin-top:.25rem;">Add Window</button>
-        </form>
-      </div>
-      {% endif %}
-    </div>
-
     <div style="display:flex;gap:.75rem;margin-top:.25rem;">
       <button type="submit" class="btn btn-primary">{% if edit_type %}Save Changes{% else %}Create Type{% endif %}</button>
       {% if edit_type %}<a href="/admin/appointment-types" class="btn btn-secondary">Cancel</a>{% endif %}
     </div>
   </form>
+</div>
+
+<div id="admin-fields" style="display:{% if edit_type and edit_type.admin_initiated %}block{% else %}none{% endif %};max-width:520px;margin-top:1rem;">
+  {% if edit_type and edit_type.admin_initiated %}
+  <div class="card" style="cursor:default;">
+    <h3 style="font-size:.95rem;font-weight:600;margin-bottom:.75rem;">Inspection Availability Windows</h3>
+    <small style="color:#64748b;display:block;margin-bottom:.75rem;">
+      These replace global availability rules for this type. Leave empty to use global rules.
+    </small>
+    {% if type_rules %}
+    <table style="margin-bottom:1rem;">
+      <thead><tr><th>Day</th><th>Start</th><th>End</th><th></th></tr></thead>
+      <tbody>
+      {% for rule in type_rules %}
+      <tr>
+        <td>{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][rule.day_of_week] }}</td>
+        <td>{{ rule.start_time_display }}</td>
+        <td>{{ rule.end_time_display }}</td>
+        <td>
+          <form method="post" action="/admin/appointment-types/{{ edit_type.id }}/rules/{{ rule.id }}/delete" style="display:inline;">
+            <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+            <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#64748b;margin-bottom:1rem;">No windows set. Using global availability rules.</p>
+    {% endif %}
+    <div class="card" style="cursor:default;max-width:400px;margin-bottom:1rem;">
+      <h4 style="margin-bottom:.75rem;">Add Window</h4>
+      <form method="post" action="/admin/appointment-types/{{ edit_type.id }}/rules">
+        <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+        <label>Day
+          <select name="day_of_week">
+            {% for i, d in [('0','Monday'),('1','Tuesday'),('2','Wednesday'),('3','Thursday'),('4','Friday'),('5','Saturday'),('6','Sunday')] %}
+            <option value="{{ i }}">{{ d }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Start Time <input type="time" name="start_time" value="08:00" required></label>
+        <label>End Time <input type="time" name="end_time" value="17:00" required></label>
+        <button type="submit" class="btn btn-primary" style="margin-top:.25rem;">Add Window</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <script>
