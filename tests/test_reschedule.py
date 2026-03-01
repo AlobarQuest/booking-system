@@ -174,6 +174,7 @@ def test_cancel_deletes_drive_time_events():
 
     assert "dt-before-id" in deleted_ids
     assert "dt-after-id" in deleted_ids
+    assert "main-event-id" in deleted_ids
     app.dependency_overrides.clear()
 
 
