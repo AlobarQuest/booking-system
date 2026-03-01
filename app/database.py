@@ -57,6 +57,7 @@ def init_db():
         for col, definition in [
             ("location", "TEXT NOT NULL DEFAULT ''"),
             ("reschedule_token", "VARCHAR(36) NOT NULL DEFAULT ''"),
+            ("drive_time_event_ids", "TEXT NOT NULL DEFAULT '[]'"),
         ]:
             if col not in existing_b:
                 conn.execute(text(f"ALTER TABLE bookings ADD COLUMN {col} {definition}"))

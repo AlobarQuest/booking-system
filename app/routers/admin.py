@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.dependencies import get_setting, require_admin, require_csrf, set_setting
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
+from app.routers.booking import _delete_drive_time_events
 from app.routers.slots import _compute_slots_for_type
 from app.services.calendar import CalendarService
 
@@ -421,16 +422,23 @@ def cancel_booking_route(
 
     settings = get_settings()
     refresh_token = get_setting(db, "google_refresh_token", "")
-    if booking.google_event_id and refresh_token and settings.google_client_id:
+    if refresh_token and settings.google_client_id:
+        cal = None
         try:
             cal = CalendarService(
                 settings.google_client_id,
                 settings.google_client_secret,
                 settings.google_redirect_uri,
             )
-            cal.delete_event(refresh_token, booking.appointment_type.calendar_id, booking.google_event_id)
         except Exception:
             pass
+        if cal:
+            try:
+                if booking.google_event_id:
+                    cal.delete_event(refresh_token, booking.appointment_type.calendar_id, booking.google_event_id)
+            except Exception:
+                pass
+            _delete_drive_time_events(cal, refresh_token, booking.appointment_type.calendar_id, booking.drive_time_event_ids)
 
     notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
     resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)

@@ -86,7 +86,8 @@ def test_reschedule_page_loads_for_valid_token():
 def test_reschedule_page_404_for_invalid_token():
     client, _ = make_client_with_booking()
     response = client.get("/reschedule/no-such-token")
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
     app.dependency_overrides.clear()
 
 
@@ -132,7 +133,61 @@ def test_reschedule_post_invalid_token():
         "/reschedule/bad-token",
         data={"start_datetime": "2025-09-20T14:00:00"},
     )
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "Book a New Appointment" in response.text
+    app.dependency_overrides.clear()
+
+
+def test_stale_post_cancel_returns_html():
+    """A stale/invalid cancel token on POST should return an HTML page, not JSON 404."""
+    client, _ = make_client_with_booking()
+    response = client.post("/cancel/not-a-real-token")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "Book a New Appointment" in response.text
+    app.dependency_overrides.clear()
+
+
+def test_cancel_deletes_drive_time_events():
+    """Guest cancel should delete drive time block events stored on the booking."""
+    from unittest.mock import patch, MagicMock
+    client, db_session = make_client_with_booking()
+
+    # Store fake drive time event IDs on the booking
+    db = db_session()
+    booking = db.query(Booking).first()
+    booking._drive_time_event_ids = '["dt-before-id", "dt-after-id"]'
+    booking.google_event_id = "main-event-id"
+    db.commit()
+    token = booking.reschedule_token
+    db.close()
+
+    deleted_ids = []
+
+    def fake_delete(refresh_token, calendar_id, event_id):
+        deleted_ids.append(event_id)
+
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost/callback"
+    mock_settings.resend_api_key = ""
+    mock_settings.from_email = "test@example.com"
+
+    with patch("app.routers.booking.get_settings", return_value=mock_settings), \
+         patch("app.services.calendar.CalendarService.delete_event", side_effect=fake_delete):
+        db2 = db_session()
+        from app.dependencies import set_setting
+        set_setting(db2, "google_refresh_token", "fake-token")
+        db2.commit()
+        db2.close()
+
+        response = client.post(f"/cancel/{token}")
+
+    assert "dt-before-id" in deleted_ids
+    assert "dt-after-id" in deleted_ids
+    assert "main-event-id" in deleted_ids
     app.dependency_overrides.clear()
 
 
@@ -177,4 +232,24 @@ def test_reschedule_creates_event_before_deleting_old():
     assert call_order.index("create") < call_order.index("delete"), (
         f"Expected create before delete, got order: {call_order}"
     )
+    app.dependency_overrides.clear()
+
+
+def test_stale_cancel_link_returns_html():
+    """A stale/invalid cancel token should return an HTML page, not JSON 404."""
+    client, _ = make_client_with_booking()
+    response = client.get("/cancel/not-a-real-token")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "<html" in response.text.lower()
+    app.dependency_overrides.clear()
+
+
+def test_stale_reschedule_link_returns_html():
+    """A stale/invalid reschedule token should return an HTML page, not JSON 404."""
+    client, _ = make_client_with_booking()
+    response = client.get("/reschedule/not-a-real-token")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "<html" in response.text.lower()
     app.dependency_overrides.clear()

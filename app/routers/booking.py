@@ -31,19 +31,21 @@ def _create_drive_time_blocks(
     end_utc,
     home_address: str,
     db,
-) -> None:
+) -> list[str]:
     """Create BLOCK calendar events for drive time before and after the appointment.
 
+    Returns a list of created calendar event IDs (0-2 items).
     All datetimes must be naive UTC. Failures are fully silent — this is a
     best-effort calendar annotation, never blocking the booking confirmation.
     """
+    created_ids: list[str] = []
     window_start = start_utc - timedelta(hours=1)
     window_end = end_utc + timedelta(hours=1)
 
     try:
         nearby_events = cal.get_events_for_day(refresh_token, calendar_id, window_start, window_end)
     except Exception:
-        return
+        return created_ids
 
     # --- Before block: drive TO this appointment ---
     preceding = None
@@ -60,7 +62,7 @@ def _create_drive_time_blocks(
         drive_mins = get_drive_time(origin, appt_location, db)
         if drive_mins > 0:
             try:
-                cal.create_event(
+                event_id = cal.create_event(
                     refresh_token=refresh_token,
                     calendar_id=calendar_id,
                     summary=f"BLOCK - Drive Time for {appt_name}",
@@ -70,6 +72,8 @@ def _create_drive_time_blocks(
                     show_as="busy",
                     disable_reminders=True,
                 )
+                if event_id:
+                    created_ids.append(event_id)
             except Exception:
                 pass
 
@@ -86,7 +90,7 @@ def _create_drive_time_blocks(
             drive_mins = get_drive_time(appt_location, dest, db)
             if drive_mins > 0:
                 try:
-                    cal.create_event(
+                    event_id = cal.create_event(
                         refresh_token=refresh_token,
                         calendar_id=calendar_id,
                         summary=f"BLOCK - Drive Time for {following['summary']}",
@@ -96,8 +100,21 @@ def _create_drive_time_blocks(
                         show_as="busy",
                         disable_reminders=True,
                     )
+                    if event_id:
+                        created_ids.append(event_id)
                 except Exception:
                     pass
+
+    return created_ids
+
+
+def _delete_drive_time_events(cal, refresh_token: str, calendar_id: str, event_ids: list[str]) -> None:
+    """Delete stored drive time BLOCK calendar events. All failures are non-fatal."""
+    for event_id in event_ids:
+        try:
+            cal.delete_event(refresh_token, calendar_id, event_id)
+        except Exception:
+            pass
 
 
 def _perform_reschedule(
@@ -237,7 +254,10 @@ def reschedule_page(
 ):
     booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+        return templates.TemplateResponse("booking/token_error.html", {
+            "request": request,
+            "message": "This link has already been used or the appointment was cancelled. If you need to book a new appointment, use the link below.",
+        })
 
     min_advance = int(get_setting(db, "min_advance_hours", "24"))
     max_future = int(get_setting(db, "max_future_days", "30"))
@@ -275,7 +295,10 @@ async def submit_reschedule(
 
     booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found.")
+        return templates.TemplateResponse("booking/token_error.html", {
+            "request": request,
+            "message": "This link has already been used or the appointment was cancelled. If you need to book a new appointment, use the link below.",
+        })
 
     try:
         new_start_dt = datetime.fromisoformat(start_datetime_str)
@@ -332,7 +355,10 @@ def cancel_page(
 ):
     booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+        return templates.TemplateResponse("booking/token_error.html", {
+            "request": request,
+            "message": "This appointment has already been cancelled or this link has expired. If you need to make changes to a current booking, please contact us.",
+        })
     current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
     return templates.TemplateResponse("booking/cancel_confirm.html", {
         "request": request,
@@ -352,14 +378,18 @@ async def submit_cancel(
 ):
     booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+        return templates.TemplateResponse("booking/token_error.html", {
+            "request": request,
+            "message": "This appointment has already been cancelled or this link has expired. If you need to make changes to a current booking, please contact us.",
+        })
 
     appt_type = booking.appointment_type
     settings = get_settings()
 
     # Delete Google Calendar event (non-fatal)
     refresh_token = get_setting(db, "google_refresh_token", "")
-    if booking.google_event_id and refresh_token and settings.google_client_id:
+    if refresh_token and settings.google_client_id:
+        cal = None
         try:
             from app.services.calendar import CalendarService
             cal = CalendarService(
@@ -367,9 +397,15 @@ async def submit_cancel(
                 settings.google_client_secret,
                 settings.google_redirect_uri,
             )
-            cal.delete_event(refresh_token, appt_type.calendar_id, booking.google_event_id)
         except Exception:
             pass
+        if cal:
+            try:
+                if booking.google_event_id:
+                    cal.delete_event(refresh_token, appt_type.calendar_id, booking.google_event_id)
+            except Exception:
+                pass
+            _delete_drive_time_events(cal, refresh_token, appt_type.calendar_id, booking.drive_time_event_ids)
 
     # Send cancellation email (non-fatal)
     notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
@@ -478,7 +514,7 @@ async def submit_booking(
     guest_phone = str(form_data.get("guest_phone", "")).strip()
     notes = str(form_data.get("notes", "")).strip()
 
-    if not all([type_id_str, start_datetime_str, guest_name, guest_email]):
+    if not all([type_id_str, start_datetime_str, guest_name, guest_email, guest_phone]):
         return templates.TemplateResponse("booking/error_partial.html", {
             "request": request, "message": "Please fill in all required fields."
         })
@@ -574,7 +610,7 @@ async def submit_booking(
         # Drive time block events (owner-only, non-fatal)
         if appt_type.requires_drive_time and appt_type.location:
             home_address = get_setting(db, "home_address", "")
-            _create_drive_time_blocks(
+            dt_ids = _create_drive_time_blocks(
                 cal=cal,
                 refresh_token=refresh_token,
                 calendar_id=appt_type.calendar_id,
@@ -585,6 +621,9 @@ async def submit_booking(
                 home_address=home_address,
                 db=db,
             )
+            if dt_ids:
+                booking.drive_time_event_ids = dt_ids
+                db.commit()
 
     # Email notifications
     notify_email = get_setting(db, "notify_email", "")

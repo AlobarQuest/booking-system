@@ -313,6 +313,7 @@ def test_submit_booking_calls_drive_time_blocks_when_requires_drive_time():
     app.dependency_overrides[require_csrf] = lambda: None
 
     with patch("app.routers.booking._create_drive_time_blocks") as mock_blocks:
+        mock_blocks.return_value = []
         with patch("app.routers.booking.get_settings") as mock_settings:
             from app.config import Settings
             mock_settings.return_value = Settings(
@@ -333,6 +334,7 @@ def test_submit_booking_calls_drive_time_blocks_when_requires_drive_time():
                     "start_datetime": "2026-03-01T10:00:00",
                     "guest_name": "Alice",
                     "guest_email": "alice@example.com",
+                    "guest_phone": "555-1234",
                 })
 
     assert response.status_code == 200

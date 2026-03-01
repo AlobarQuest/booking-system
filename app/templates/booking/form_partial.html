@@ -17,8 +17,8 @@
     <label>Email Address *
       <input type="email" name="guest_email" required placeholder="jane@example.com">
     </label>
-    <label>Phone Number
-      <input type="tel" name="guest_phone" placeholder="(555) 000-0000">
+    <label>Phone Number *
+      <input type="tel" name="guest_phone" required placeholder="(555) 000-0000">
     </label>
     {% for field in appt_type.custom_fields %}
     <label>{{ field.label }}{% if field.required %} *{% endif %}

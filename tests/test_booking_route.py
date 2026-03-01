@@ -125,6 +125,7 @@ def test_submit_booking_calendar_event_uses_utc():
             "start_datetime": "2025-03-03T09:30:00",  # 9:30 AM EST (UTC-5)
             "guest_name": "Test User",
             "guest_email": "test@example.com",
+            "guest_phone": "555-1234",
         })
     assert response.status_code == 200
     assert mock_create.called
@@ -167,6 +168,7 @@ def test_booking_has_reschedule_token():
         "start_datetime": "2025-06-01T10:00:00",
         "guest_name": "Token Test",
         "guest_email": "token@example.com",
+        "guest_phone": "555-1234",
     })
 
     import uuid as _uuid
@@ -176,6 +178,63 @@ def test_booking_has_reschedule_token():
     assert booking is not None
     _uuid.UUID(booking.reschedule_token, version=4)  # raises ValueError if invalid UUID4
     db2.close()
+    app.dependency_overrides.clear()
+
+
+def test_booking_model_has_drive_time_event_ids():
+    from app.models import Booking
+    b = Booking()
+    b._drive_time_event_ids = "[]"
+    assert b.drive_time_event_ids == []
+    b.drive_time_event_ids = ["abc", "def"]
+    assert b._drive_time_event_ids == '["abc", "def"]'
+
+
+def test_create_drive_time_blocks_returns_list():
+    """_create_drive_time_blocks should return a list (possibly empty)."""
+    from unittest.mock import MagicMock, patch
+    from app.routers.booking import _create_drive_time_blocks
+    import datetime
+
+    cal = MagicMock()
+    cal.get_events_for_day.return_value = []
+    cal.create_event.return_value = "event-id-123"
+
+    with patch("app.routers.booking.get_drive_time", return_value=0):
+        result = _create_drive_time_blocks(
+            cal=cal,
+            refresh_token="tok",
+            calendar_id="primary",
+            appt_name="Home Tour",
+            appt_location="456 Elm St",
+            start_utc=datetime.datetime(2030, 9, 20, 14, 0),
+            end_utc=datetime.datetime(2030, 9, 20, 14, 30),
+            home_address="123 Main St",
+            db=MagicMock(),
+        )
+
+    assert isinstance(result, list)
+
+
+def test_booking_requires_phone():
+    """Submitting /book without a phone number should return a validation error."""
+    client, Session = setup_client()
+    db = Session()
+    appt_type = db.query(AppointmentType).first()
+    appt_id = appt_type.id
+    db.close()
+
+    response = client.post("/book", data={
+        "type_id": str(appt_id),
+        "start_datetime": "2030-09-20T14:00:00",
+        "guest_name": "Jane Smith",
+        "guest_email": "jane@example.com",
+        "guest_phone": "",
+    })
+    assert response.status_code == 200
+    # Should get an error partial, not a confirmation
+    assert "confirmation" not in response.text.lower()
+    assert "fill in" in response.text.lower() or "required" in response.text.lower()
     app.dependency_overrides.clear()
 
 
@@ -201,6 +260,7 @@ def test_confirmation_email_includes_reschedule_link():
             "start_datetime": "2025-06-01T11:00:00",
             "guest_name": "Link Test",
             "guest_email": "link@example.com",
+            "guest_phone": "555-1234",
         })
 
     assert mock_send.called
