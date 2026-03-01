@@ -550,6 +550,7 @@ def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         "home_address": get_setting(db, "home_address", ""),
         "resend_api_key_set": bool(get_setting(db, "resend_api_key", settings.resend_api_key)),
         "from_email": get_setting(db, "from_email", settings.from_email),
+        "contact_phone": get_setting(db, "contact_phone", ""),
         "google_authorized": cal.is_authorized(refresh_token),
         "conflict_cals": conflict_cals,
         "email_guest_confirmation": get_setting(db, "email_guest_confirmation", ""),
@@ -569,6 +570,7 @@ def save_settings(
     home_address: str = Form(""),
     resend_api_key: str = Form(""),
     from_email: str = Form(""),
+    contact_phone: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
     _csrf_ok: None = Depends(require_csrf),
@@ -578,6 +580,7 @@ def save_settings(
     set_setting(db, "notifications_enabled", "true" if notifications_enabled == "true" else "false")
     set_setting(db, "timezone", timezone)
     set_setting(db, "home_address", home_address)
+    set_setting(db, "contact_phone", contact_phone.strip())
     if resend_api_key.strip():
         set_setting(db, "resend_api_key", resend_api_key.strip())
     if from_email.strip():

@@ -25,8 +25,9 @@ _GUEST_CONFIRMATION_DEFAULT = """\
   {location_row}
 </table>
 {custom_fields}
+{agent_info}
 <p style="margin-top:1.5rem;">Need to reschedule? <a href="{reschedule_url}" style="color:#2563eb;">Click here to pick a new time</a> — it&#39;s quick and easy.</p>
-<p style="color:#64748b;font-size:.9em;">To cancel your appointment, please reply to this email.</p>
+<p style="color:#64748b;font-size:.9em;">Need to cancel? <a href="{cancel_url}" style="color:#64748b;">Cancel your appointment here</a>.</p>
 <p style="margin-top:1.5rem;">See you soon,<br><strong>{owner_name}</strong></p>
 </div>"""
 
@@ -60,7 +61,9 @@ def send_guest_confirmation(
     owner_name: str,
     template: str = "",
     reschedule_url: str = "",
+    cancel_url: str = "",
     location: str = "",
+    contact_phone: str = "",
 ):
     resend.api_key = api_key
     custom_html = "".join(
@@ -73,6 +76,12 @@ def send_guest_confirmation(
         f'<td style="padding:.5rem 0;">{escape(location)}</td>'
         f'</tr>'
     ) if location.strip() else ""
+    agent_info = (
+        f'<p style="background:#f0fdf4;border-left:4px solid #059669;'
+        f'padding:.75rem 1rem;margin:1.5rem 0;border-radius:0 .5rem .5rem 0;">'
+        f'This is an agent guided tour. The agent will meet you at the property '
+        f'at your appointment time. Their number is <strong>{escape(contact_phone)}</strong>.</p>'
+    ) if contact_phone.strip() else ""
     try:
         html = (template or _GUEST_CONFIRMATION_DEFAULT).format(
             guest_name=escape(guest_name),
@@ -81,7 +90,9 @@ def send_guest_confirmation(
             owner_name=escape(owner_name),
             custom_fields=custom_html,
             reschedule_url=escape(reschedule_url),
+            cancel_url=escape(cancel_url),
             location_row=location_row,
+            agent_info=agent_info,
         )
     except (KeyError, ValueError, IndexError):
         html = _GUEST_CONFIRMATION_DEFAULT.format(
@@ -91,7 +102,9 @@ def send_guest_confirmation(
             owner_name=escape(owner_name),
             custom_fields=custom_html,
             reschedule_url=escape(reschedule_url),
+            cancel_url=escape(cancel_url),
             location_row=location_row,
+            agent_info=agent_info,
         )
     resend.Emails.send({
         "from": from_email,

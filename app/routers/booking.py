@@ -180,6 +180,7 @@ def _perform_reschedule(
         if notify_enabled and resend_api_key:
             from app.services.email import send_guest_confirmation
             reschedule_url = base_url + f"/reschedule/{booking.reschedule_token}"
+            cancel_url = base_url + f"/cancel/{booking.reschedule_token}"
             try:
                 send_guest_confirmation(
                     api_key=resend_api_key,
@@ -193,7 +194,9 @@ def _perform_reschedule(
                     owner_name=get_setting(db, "owner_name", ""),
                     template=get_setting(db, "email_guest_confirmation", ""),
                     reschedule_url=reschedule_url,
+                    cancel_url=cancel_url,
                     location=appt_type.location or "",
+                    contact_phone=get_setting(db, "contact_phone", ""),
                 )
             except Exception:
                 pass
@@ -318,6 +321,81 @@ async def submit_reschedule(
         "request": request,
         "booking": booking,
         "new_display": new_display,
+    })
+
+
+@router.get("/cancel/{token}", response_class=HTMLResponse)
+def cancel_page(
+    request: Request,
+    token: str,
+    db: Session = Depends(get_db),
+):
+    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+    current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
+    return templates.TemplateResponse("booking/cancel_confirm.html", {
+        "request": request,
+        "booking": booking,
+        "token": token,
+        "current_display": current_display,
+    })
+
+
+@router.post("/cancel/{token}", response_class=HTMLResponse)
+@limiter.limit("10/hour")
+async def submit_cancel(
+    request: Request,
+    token: str,
+    db: Session = Depends(get_db),
+    _csrf_ok: None = Depends(require_csrf),
+):
+    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+
+    appt_type = booking.appointment_type
+    settings = get_settings()
+
+    # Delete Google Calendar event (non-fatal)
+    refresh_token = get_setting(db, "google_refresh_token", "")
+    if booking.google_event_id and refresh_token and settings.google_client_id:
+        try:
+            from app.services.calendar import CalendarService
+            cal = CalendarService(
+                settings.google_client_id,
+                settings.google_client_secret,
+                settings.google_redirect_uri,
+            )
+            cal.delete_event(refresh_token, appt_type.calendar_id, booking.google_event_id)
+        except Exception:
+            pass
+
+    # Send cancellation email (non-fatal)
+    notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
+    resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)
+    from_email = get_setting(db, "from_email", settings.from_email)
+    if notify_enabled and resend_api_key and booking.guest_email:
+        try:
+            from app.services.email import send_cancellation_notice
+            send_cancellation_notice(
+                api_key=resend_api_key,
+                from_email=from_email,
+                guest_email=booking.guest_email,
+                guest_name=booking.guest_name,
+                appt_type_name=appt_type.guest_event_title or appt_type.name,
+                start_dt=booking.start_datetime,
+                template=get_setting(db, "email_guest_cancellation", ""),
+            )
+        except Exception:
+            pass
+
+    booking.status = "cancelled"
+    db.commit()
+
+    return templates.TemplateResponse("booking/cancel_success.html", {
+        "request": request,
+        "booking": booking,
     })
 
 
@@ -517,7 +595,9 @@ async def submit_booking(
     from_email = get_setting(db, "from_email", settings.from_email)
     if notifications_enabled and resend_api_key:
         from app.services.email import send_guest_confirmation, send_admin_alert
-        reschedule_url = str(request.base_url).rstrip('/') + f"/reschedule/{booking.reschedule_token}"
+        base_url = str(request.base_url).rstrip('/')
+        reschedule_url = base_url + f"/reschedule/{booking.reschedule_token}"
+        cancel_url = base_url + f"/cancel/{booking.reschedule_token}"
         try:
             send_guest_confirmation(
                 api_key=resend_api_key,
@@ -531,7 +611,9 @@ async def submit_booking(
                 owner_name=owner_name,
                 template=get_setting(db, "email_guest_confirmation", ""),
                 reschedule_url=reschedule_url,
+                cancel_url=cancel_url,
                 location=appt_type.location or "",
+                contact_phone=get_setting(db, "contact_phone", ""),
             )
         except Exception:
             pass
@@ -558,4 +640,5 @@ async def submit_booking(
         "request": request,
         "booking": booking,
         "start_display": start_display,
+        "contact_phone": get_setting(db, "contact_phone", ""),
     })

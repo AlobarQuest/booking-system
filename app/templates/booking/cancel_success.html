@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Appointment Cancelled{% endblock %}
+{% block header_title %}Appointment Cancelled{% endblock %}
+{% block header_subtitle %}{{ booking.appointment_type.name }}{% endblock %}
+{% block content %}
+
+<div class="confirmation-box">
+  <div class="confirmation-icon" style="background:#dc2626;">✓</div>
+  <h2>Your appointment has been cancelled.</h2>
+  <p style="color:#64748b;">
+    If you'd like to book a new appointment in the future,<br>
+    <a href="/">visit our booking page</a>.
+  </p>
+</div>
+
+{% endblock %}

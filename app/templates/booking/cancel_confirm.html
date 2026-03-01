@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Cancel Appointment{% endblock %}
+{% block header_title %}Cancel Appointment{% endblock %}
+{% block header_subtitle %}{{ booking.appointment_type.name }}{% endblock %}
+{% block content %}
+
+<div class="card static" style="margin-bottom:1.5rem;">
+  <h3 style="margin-bottom:.5rem;">Your Appointment</h3>
+  <p><strong>{{ booking.appointment_type.name }}</strong><br>{{ current_display }}</p>
+</div>
+
+<div class="card static">
+  <h3 style="margin-bottom:.75rem;">Are you sure you want to cancel?</h3>
+  <p style="color:#64748b;margin-bottom:1rem;">
+    This cannot be undone. If you'd like a different time instead,
+    <a href="/reschedule/{{ token }}">reschedule your appointment</a> rather than cancelling.
+  </p>
+  <form method="post" action="/cancel/{{ token }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+      <button type="submit" class="btn" style="background:#dc2626;color:#fff;">Yes, Cancel My Appointment</button>
+      <a href="/reschedule/{{ token }}" class="btn btn-secondary">Keep My Appointment</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
