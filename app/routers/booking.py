@@ -254,7 +254,11 @@ def reschedule_page(
 ):
     booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+        return templates.TemplateResponse("booking/token_error.html", {
+            "request": request,
+            "subtitle": "",
+            "message": "This link has already been used or the appointment was cancelled. If you need to book a new appointment, use the link below.",
+        })
 
     min_advance = int(get_setting(db, "min_advance_hours", "24"))
     max_future = int(get_setting(db, "max_future_days", "30"))
@@ -292,7 +296,11 @@ async def submit_reschedule(
 
     booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found.")
+        return templates.TemplateResponse("booking/token_error.html", {
+            "request": request,
+            "subtitle": "",
+            "message": "This link has already been used or the appointment was cancelled. If you need to book a new appointment, use the link below.",
+        })
 
     try:
         new_start_dt = datetime.fromisoformat(start_datetime_str)
@@ -349,7 +357,11 @@ def cancel_page(
 ):
     booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+        return templates.TemplateResponse("booking/token_error.html", {
+            "request": request,
+            "subtitle": "",
+            "message": "This appointment has already been cancelled or this link has expired. If you need to make changes to a current booking, please contact us.",
+        })
     current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
     return templates.TemplateResponse("booking/cancel_confirm.html", {
         "request": request,
@@ -369,7 +381,11 @@ async def submit_cancel(
 ):
     booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found or already cancelled.")
+        return templates.TemplateResponse("booking/token_error.html", {
+            "request": request,
+            "subtitle": "",
+            "message": "This appointment has already been cancelled or this link has expired. If you need to make changes to a current booking, please contact us.",
+        })
 
     appt_type = booking.appointment_type
     settings = get_settings()

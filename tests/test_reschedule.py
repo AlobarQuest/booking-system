@@ -86,7 +86,8 @@ def test_reschedule_page_loads_for_valid_token():
 def test_reschedule_page_404_for_invalid_token():
     client, _ = make_client_with_booking()
     response = client.get("/reschedule/no-such-token")
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
     app.dependency_overrides.clear()
 
 
@@ -132,7 +133,8 @@ def test_reschedule_post_invalid_token():
         "/reschedule/bad-token",
         data={"start_datetime": "2025-09-20T14:00:00"},
     )
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
     app.dependency_overrides.clear()
 
 
@@ -219,4 +221,24 @@ def test_reschedule_creates_event_before_deleting_old():
     assert call_order.index("create") < call_order.index("delete"), (
         f"Expected create before delete, got order: {call_order}"
     )
+    app.dependency_overrides.clear()
+
+
+def test_stale_cancel_link_returns_html():
+    """A stale/invalid cancel token should return an HTML page, not JSON 404."""
+    client, _ = make_client_with_booking()
+    response = client.get("/cancel/not-a-real-token")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "<html" in response.text.lower()
+    app.dependency_overrides.clear()
+
+
+def test_stale_reschedule_link_returns_html():
+    """A stale/invalid reschedule token should return an HTML page, not JSON 404."""
+    client, _ = make_client_with_booking()
+    response = client.get("/reschedule/not-a-real-token")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "<html" in response.text.lower()
     app.dependency_overrides.clear()
