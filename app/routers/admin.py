@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.dependencies import get_setting, require_admin, require_csrf, set_setting
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
+from app.routers.booking import _delete_drive_time_events
 from app.routers.slots import _compute_slots_for_type
 from app.services.calendar import CalendarService
 
@@ -430,7 +431,6 @@ def cancel_booking_route(
             )
             if booking.google_event_id:
                 cal.delete_event(refresh_token, booking.appointment_type.calendar_id, booking.google_event_id)
-            from app.routers.booking import _delete_drive_time_events
             _delete_drive_time_events(cal, refresh_token, booking.appointment_type.calendar_id, booking.drive_time_event_ids)
         except Exception:
             pass
