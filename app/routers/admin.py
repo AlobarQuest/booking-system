@@ -3,6 +3,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timedelta
+from datetime import date as date_type
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -12,6 +13,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.dependencies import get_setting, require_admin, require_csrf, set_setting
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
+from app.routers.slots import _compute_slots_for_type
 from app.services.calendar import CalendarService
 
 router = APIRouter(prefix="/admin")
@@ -454,16 +456,13 @@ def cancel_booking_route(
 def admin_reschedule_slots(
     request: Request, booking_id: int, date: str = Query(""), db: Session = Depends(get_db), _=AuthDep,
 ):
-    from app.routers.slots import _compute_slots_for_type
-    from datetime import date as date_type
-    from fastapi.responses import HTMLResponse as _HTMLResponse
     booking = db.query(Booking).filter_by(id=booking_id, status="confirmed").first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found.")
     try:
         target_date = date_type.fromisoformat(date)
     except ValueError:
-        return _HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
+        return HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
     slot_data = _compute_slots_for_type(
         booking.appointment_type, target_date, db,
         destination=booking.location, skip_advance_notice=True,

@@ -92,3 +92,37 @@ def test_admin_reschedule_updates_booking():
     assert booking.start_datetime == datetime(2025, 9, 25, 9, 0, 0)
     db2.close()
     app.dependency_overrides.clear()
+
+
+def test_admin_reschedule_slots_bypass_advance_notice():
+    """Admin slot endpoint should return slots even inside the advance-notice window.
+
+    Sets min_advance_hours=999 (far future) so no slots pass the public
+    advance-notice filter, then verifies the admin slots endpoint still returns
+    HTML (not an empty no-slots response) for a date with availability rules.
+    """
+    from app.dependencies import set_setting
+
+    client, Session = make_admin_client_with_booking()
+    db = Session()
+    booking_id = db.query(Booking).first().id
+    # Set a huge advance notice so public slots would all be blocked
+    set_setting(db, "min_advance_hours", "999")
+    # Add an availability rule so there are actual slots to compute
+    from app.models import AvailabilityRule
+    rule = AvailabilityRule(
+        day_of_week=0,  # Monday
+        start_time="09:00",
+        end_time="17:00",
+        active=True,
+    )
+    db.add(rule)
+    db.commit()
+    db.close()
+
+    # 2025-09-15 is a Monday
+    response = client.get(f"/admin/bookings/{booking_id}/reschedule/slots?date=2025-09-15")
+    assert response.status_code == 200
+    # Should have slot buttons, not just "no available times"
+    assert "slot-btn" in response.text
+    app.dependency_overrides.clear()
