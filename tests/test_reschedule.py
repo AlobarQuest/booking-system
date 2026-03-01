@@ -135,6 +135,17 @@ def test_reschedule_post_invalid_token():
     )
     assert response.status_code == 200
     assert "text/html" in response.headers.get("content-type", "")
+    assert "Book a New Appointment" in response.text
+    app.dependency_overrides.clear()
+
+
+def test_stale_post_cancel_returns_html():
+    """A stale/invalid cancel token on POST should return an HTML page, not JSON 404."""
+    client, _ = make_client_with_booking()
+    response = client.post("/cancel/not-a-real-token")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "Book a New Appointment" in response.text
     app.dependency_overrides.clear()
 
 

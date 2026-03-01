@@ -256,7 +256,6 @@ def reschedule_page(
     if not booking:
         return templates.TemplateResponse("booking/token_error.html", {
             "request": request,
-            "subtitle": "",
             "message": "This link has already been used or the appointment was cancelled. If you need to book a new appointment, use the link below.",
         })
 
@@ -298,7 +297,6 @@ async def submit_reschedule(
     if not booking:
         return templates.TemplateResponse("booking/token_error.html", {
             "request": request,
-            "subtitle": "",
             "message": "This link has already been used or the appointment was cancelled. If you need to book a new appointment, use the link below.",
         })
 
@@ -359,7 +357,6 @@ def cancel_page(
     if not booking:
         return templates.TemplateResponse("booking/token_error.html", {
             "request": request,
-            "subtitle": "",
             "message": "This appointment has already been cancelled or this link has expired. If you need to make changes to a current booking, please contact us.",
         })
     current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
@@ -383,7 +380,6 @@ async def submit_cancel(
     if not booking:
         return templates.TemplateResponse("booking/token_error.html", {
             "request": request,
-            "subtitle": "",
             "message": "This appointment has already been cancelled or this link has expired. If you need to make changes to a current booking, please contact us.",
         })
 
