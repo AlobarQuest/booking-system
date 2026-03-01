@@ -175,13 +175,15 @@ def _perform_reschedule(
     # Send new confirmation email (non-fatal; only if guest email present)
     if booking.guest_email:
         notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
-        if notify_enabled and settings.resend_api_key:
+        resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)
+        from_email = get_setting(db, "from_email", settings.from_email)
+        if notify_enabled and resend_api_key:
             from app.services.email import send_guest_confirmation
             reschedule_url = base_url + f"/reschedule/{booking.reschedule_token}"
             try:
                 send_guest_confirmation(
-                    api_key=settings.resend_api_key,
-                    from_email=settings.from_email,
+                    api_key=resend_api_key,
+                    from_email=from_email,
                     guest_email=booking.guest_email,
                     guest_name=booking.guest_name,
                     appt_type_name=appt_type.guest_event_title or appt_type.name,
@@ -511,13 +513,15 @@ async def submit_booking(
     notifications_enabled = get_setting(db, "notifications_enabled", "true") == "true"
     owner_name = get_setting(db, "owner_name", "")
     guest_appt_name = appt_type.guest_event_title or appt_type.name
-    if notifications_enabled and settings.resend_api_key:
+    resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)
+    from_email = get_setting(db, "from_email", settings.from_email)
+    if notifications_enabled and resend_api_key:
         from app.services.email import send_guest_confirmation, send_admin_alert
         reschedule_url = str(request.base_url).rstrip('/') + f"/reschedule/{booking.reschedule_token}"
         try:
             send_guest_confirmation(
-                api_key=settings.resend_api_key,
-                from_email=settings.from_email,
+                api_key=resend_api_key,
+                from_email=from_email,
                 guest_email=guest_email,
                 guest_name=guest_name,
                 appt_type_name=guest_appt_name,
@@ -534,8 +538,8 @@ async def submit_booking(
         if notify_email:
             try:
                 send_admin_alert(
-                    api_key=settings.resend_api_key,
-                    from_email=settings.from_email,
+                    api_key=resend_api_key,
+                    from_email=from_email,
                     notify_email=notify_email,
                     guest_name=guest_name,
                     guest_email=guest_email,

@@ -19,6 +19,14 @@
              style="width:auto;">
       Send email notifications
     </label>
+    <label>Resend API Key
+      <input type="password" name="resend_api_key" value=""
+             placeholder="{% if resend_api_key_set %}Already configured — leave blank to keep{% else %}re_…{% endif %}">
+    </label>
+    <label>From Email Address
+      <input type="email" name="from_email" value="{{ from_email }}"
+             placeholder="bookings@yourdomain.com">
+    </label>
     <label>Timezone
       <input type="text" name="timezone" value="{{ timezone }}" placeholder="America/New_York">
     </label>

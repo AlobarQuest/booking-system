@@ -430,12 +430,14 @@ def cancel_booking_route(
             pass
 
     notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
-    if notify_enabled and settings.resend_api_key:
+    resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)
+    from_email = get_setting(db, "from_email", settings.from_email)
+    if notify_enabled and resend_api_key:
         from app.services.email import send_cancellation_notice
         try:
             send_cancellation_notice(
-                api_key=settings.resend_api_key,
-                from_email=settings.from_email,
+                api_key=resend_api_key,
+                from_email=from_email,
                 guest_email=booking.guest_email,
                 guest_name=booking.guest_name,
                 appt_type_name=booking.appointment_type.name,
@@ -546,6 +548,8 @@ def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         "notifications_enabled": get_setting(db, "notifications_enabled", "true") == "true",
         "timezone": get_setting(db, "timezone", "America/New_York"),
         "home_address": get_setting(db, "home_address", ""),
+        "resend_api_key_set": bool(get_setting(db, "resend_api_key", settings.resend_api_key)),
+        "from_email": get_setting(db, "from_email", settings.from_email),
         "google_authorized": cal.is_authorized(refresh_token),
         "conflict_cals": conflict_cals,
         "email_guest_confirmation": get_setting(db, "email_guest_confirmation", ""),
@@ -563,6 +567,8 @@ def save_settings(
     notifications_enabled: str = Form("false"),
     timezone: str = Form("America/New_York"),
     home_address: str = Form(""),
+    resend_api_key: str = Form(""),
+    from_email: str = Form(""),
     db: Session = Depends(get_db),
     _=AuthDep,
     _csrf_ok: None = Depends(require_csrf),
@@ -572,6 +578,10 @@ def save_settings(
     set_setting(db, "notifications_enabled", "true" if notifications_enabled == "true" else "false")
     set_setting(db, "timezone", timezone)
     set_setting(db, "home_address", home_address)
+    if resend_api_key.strip():
+        set_setting(db, "resend_api_key", resend_api_key.strip())
+    if from_email.strip():
+        set_setting(db, "from_email", from_email.strip())
     _flash(request, "Settings saved.")
     return RedirectResponse("/admin/settings", status_code=302)
 
