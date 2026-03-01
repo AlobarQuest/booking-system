@@ -112,7 +112,7 @@ def test_reschedule_post_updates_booking():
     client, Session = make_client_with_booking()
     response = client.post(
         "/reschedule/test-token-1234-abcd-5678-efgh90123456",
-        data={"start_datetime": "2025-09-20T14:00:00"},
+        data={"start_datetime": "2030-09-20T14:00:00"},
         follow_redirects=False,
     )
     # Should return 200 (success page)
@@ -121,7 +121,7 @@ def test_reschedule_post_updates_booking():
     from datetime import datetime
     db = Session()
     booking = db.query(Booking).first()
-    assert booking.start_datetime == datetime(2025, 9, 20, 14, 0, 0)
+    assert booking.start_datetime == datetime(2030, 9, 20, 14, 0, 0)
     db.close()
     app.dependency_overrides.clear()
 
@@ -171,7 +171,7 @@ def test_reschedule_creates_event_before_deleting_old():
 
         client.post(
             "/reschedule/test-token-1234-abcd-5678-efgh90123456",
-            data={"start_datetime": "2025-09-20T14:00:00"},
+            data={"start_datetime": "2030-09-20T14:00:00"},
         )
 
     assert call_order.index("create") < call_order.index("delete"), (

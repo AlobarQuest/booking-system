@@ -127,7 +127,7 @@ def _perform_reschedule(
 
     refresh_token = get_setting(db, "google_refresh_token", "")
     old_event_id = booking.google_event_id
-    new_event_id = ""
+    new_event_id = old_event_id  # preserve original if calendar branch is skipped
 
     if refresh_token and settings.google_client_id:
         cal = CalendarService(
@@ -283,9 +283,18 @@ async def submit_reschedule(
         })
 
     min_advance = int(get_setting(db, "min_advance_hours", "24"))
+    max_future = int(get_setting(db, "max_future_days", "30"))
     tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
     now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
     cutoff = now_local + timedelta(hours=min_advance)
+    if new_start_dt <= cutoff:
+        return templates.TemplateResponse("booking/reschedule.html", {
+            "request": request, "booking": booking, "token": token,
+            "too_close": True, "min_advance_hours": min_advance,
+            "min_date": cutoff.date().isoformat(),
+            "max_date": (now_local + timedelta(days=max_future)).date().isoformat(),
+            "current_display": booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p"),
+        })
 
     settings = get_settings()
     base_url = str(request.base_url).rstrip('/')
@@ -296,7 +305,7 @@ async def submit_reschedule(
             "request": request, "booking": booking, "token": token,
             "too_close": False, "min_advance_hours": min_advance,
             "min_date": cutoff.date().isoformat(),
-            "max_date": (now_local + timedelta(days=int(get_setting(db, "max_future_days", "30")))).date().isoformat(),
+            "max_date": (now_local + timedelta(days=max_future)).date().isoformat(),
             "current_display": booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p"),
             "error": str(exc),
         })
