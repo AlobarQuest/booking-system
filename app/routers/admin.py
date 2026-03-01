@@ -423,17 +423,22 @@ def cancel_booking_route(
     settings = get_settings()
     refresh_token = get_setting(db, "google_refresh_token", "")
     if refresh_token and settings.google_client_id:
+        cal = None
         try:
             cal = CalendarService(
                 settings.google_client_id,
                 settings.google_client_secret,
                 settings.google_redirect_uri,
             )
-            if booking.google_event_id:
-                cal.delete_event(refresh_token, booking.appointment_type.calendar_id, booking.google_event_id)
-            _delete_drive_time_events(cal, refresh_token, booking.appointment_type.calendar_id, booking.drive_time_event_ids)
         except Exception:
             pass
+        if cal:
+            try:
+                if booking.google_event_id:
+                    cal.delete_event(refresh_token, booking.appointment_type.calendar_id, booking.google_event_id)
+            except Exception:
+                pass
+            _delete_drive_time_events(cal, refresh_token, booking.appointment_type.calendar_id, booking.drive_time_event_ids)
 
     notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
     resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)

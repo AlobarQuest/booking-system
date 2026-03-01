@@ -389,6 +389,7 @@ async def submit_cancel(
     # Delete Google Calendar event (non-fatal)
     refresh_token = get_setting(db, "google_refresh_token", "")
     if refresh_token and settings.google_client_id:
+        cal = None
         try:
             from app.services.calendar import CalendarService
             cal = CalendarService(
@@ -396,11 +397,15 @@ async def submit_cancel(
                 settings.google_client_secret,
                 settings.google_redirect_uri,
             )
-            if booking.google_event_id:
-                cal.delete_event(refresh_token, appt_type.calendar_id, booking.google_event_id)
-            _delete_drive_time_events(cal, refresh_token, appt_type.calendar_id, booking.drive_time_event_ids)
         except Exception:
             pass
+        if cal:
+            try:
+                if booking.google_event_id:
+                    cal.delete_event(refresh_token, appt_type.calendar_id, booking.google_event_id)
+            except Exception:
+                pass
+            _delete_drive_time_events(cal, refresh_token, appt_type.calendar_id, booking.drive_time_event_ids)
 
     # Send cancellation email (non-fatal)
     notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"

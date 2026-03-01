@@ -94,6 +94,97 @@ def test_admin_reschedule_updates_booking():
     app.dependency_overrides.clear()
 
 
+def test_admin_cancel_deletes_drive_time_events():
+    """Admin cancel route should delete drive time block events stored on the booking."""
+    from unittest.mock import patch, MagicMock
+
+    client, Session = make_admin_client_with_booking()
+    db = Session()
+    booking = db.query(Booking).first()
+    booking_id = booking.id
+    booking.google_event_id = "main-admin-event-id"
+    booking._drive_time_event_ids = '["dt-admin-before", "dt-admin-after"]'
+    db.commit()
+    db.close()
+
+    deleted_ids = []
+
+    def fake_delete(refresh_token, calendar_id, event_id):
+        deleted_ids.append(event_id)
+
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost/callback"
+    mock_settings.resend_api_key = ""
+    mock_settings.from_email = "test@example.com"
+
+    with patch("app.routers.admin.get_settings", return_value=mock_settings), \
+         patch("app.services.calendar.CalendarService.delete_event", side_effect=fake_delete):
+        db2 = Session()
+        from app.dependencies import set_setting
+        set_setting(db2, "google_refresh_token", "fake-token")
+        db2.commit()
+        db2.close()
+
+        response = client.post(
+            f"/admin/bookings/{booking_id}/cancel",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 302
+    assert "main-admin-event-id" in deleted_ids
+    assert "dt-admin-before" in deleted_ids
+    assert "dt-admin-after" in deleted_ids
+    app.dependency_overrides.clear()
+
+
+def test_admin_cancel_deletes_drive_time_events_even_if_main_delete_fails():
+    """Drive time block events should be deleted even if the main event deletion raises."""
+    from unittest.mock import patch, MagicMock
+
+    client, Session = make_admin_client_with_booking()
+    db = Session()
+    booking = db.query(Booking).first()
+    booking_id = booking.id
+    booking.google_event_id = "main-event-that-will-404"
+    booking._drive_time_event_ids = '["dt-resilient-before", "dt-resilient-after"]'
+    db.commit()
+    db.close()
+
+    deleted_ids = []
+
+    def fake_delete(refresh_token, calendar_id, event_id):
+        if event_id == "main-event-that-will-404":
+            raise Exception("404 Not Found")
+        deleted_ids.append(event_id)
+
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost/callback"
+    mock_settings.resend_api_key = ""
+    mock_settings.from_email = "test@example.com"
+
+    with patch("app.routers.admin.get_settings", return_value=mock_settings), \
+         patch("app.services.calendar.CalendarService.delete_event", side_effect=fake_delete):
+        db2 = Session()
+        from app.dependencies import set_setting
+        set_setting(db2, "google_refresh_token", "fake-token")
+        db2.commit()
+        db2.close()
+
+        response = client.post(
+            f"/admin/bookings/{booking_id}/cancel",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 302
+    assert "dt-resilient-before" in deleted_ids
+    assert "dt-resilient-after" in deleted_ids
+    app.dependency_overrides.clear()
+
+
 def test_admin_reschedule_slots_bypass_advance_notice():
     """Admin slot endpoint should return slots even inside the advance-notice window.
 
