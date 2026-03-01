@@ -22,8 +22,11 @@
     <td>{{ b.guest_phone or "—" }}</td>
     <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">{{ b.notes or "—" }}</td>
     <td>
+      <a href="/admin/bookings/{{ b.id }}/reschedule"
+         class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .6rem;">Reschedule</a>
       <form method="post" action="/admin/bookings/{{ b.id }}/cancel"
-            onsubmit="return confirm('Cancel booking for {{ b.guest_name }}?')">
+            onsubmit="return confirm('Cancel booking for {{ b.guest_name }}?')"
+            style="display:inline;">
         <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
         <button class="btn btn-danger" style="font-size:.8rem;padding:.3rem .6rem;">Cancel</button>
       </form>

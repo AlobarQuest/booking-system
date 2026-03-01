@@ -1,0 +1,53 @@
+{% extends "admin_base.html" %}
+{% block title %}Reschedule Booking{% endblock %}
+{% block content %}
+<h1>Reschedule Booking</h1>
+
+<div class="card" style="cursor:default;max-width:520px;margin-bottom:1.5rem;">
+  <h2>Current Booking</h2>
+  <p>
+    <strong>{{ booking.guest_name }}</strong><br>
+    {{ booking.appointment_type.name }}<br>
+    <span style="color:#64748b;">{{ current_display }}</span>
+  </p>
+</div>
+
+<div class="card" style="cursor:default;max-width:520px;">
+  <h2>Pick a New Time</h2>
+  <label>Date
+    <input type="date" id="reschedule-date"
+      min="{{ min_date }}" max="{{ max_date }}"
+      hx-get="/reschedule/{{ booking.reschedule_token }}/slots"
+      hx-target="#slot-area"
+      hx-swap="innerHTML"
+      hx-trigger="change">
+  </label>
+  <div id="slot-area" style="margin-top:1rem;"></div>
+  <div id="confirmation-section" style="display:none;margin-top:1rem;">
+    <p id="confirm-summary" style="color:#059669;font-weight:600;margin-bottom:.75rem;"></p>
+    <form method="post" action="/admin/bookings/{{ booking.id }}/reschedule">
+      <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="start_datetime" id="confirm-datetime">
+      <div style="display:flex;gap:.75rem;">
+        <button type="submit" class="btn btn-primary">Confirm Reschedule</button>
+        <button type="button" class="btn btn-secondary" onclick="cancelRescheduleSelection()">← Back</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function selectRescheduleSlot(value, display) {
+  var date = document.getElementById('reschedule-date').value;
+  document.getElementById('confirm-datetime').value = date + 'T' + value + ':00';
+  document.getElementById('confirm-summary').textContent = display;
+  document.getElementById('confirmation-section').style.display = 'block';
+  document.querySelectorAll('#slot-area .slot-btn').forEach(function(b) { b.classList.remove('selected'); });
+  if (event && event.target) { event.target.classList.add('selected'); }
+}
+function cancelRescheduleSelection() {
+  document.getElementById('confirmation-section').style.display = 'none';
+  document.querySelectorAll('#slot-area .slot-btn').forEach(function(b) { b.classList.remove('selected'); });
+}
+</script>
+{% endblock %}

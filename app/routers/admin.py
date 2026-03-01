@@ -448,6 +448,57 @@ def cancel_booking_route(
     return RedirectResponse("/admin/bookings", status_code=302)
 
 
+# ---------- Reschedule ----------
+
+@router.get("/bookings/{booking_id}/reschedule", response_class=HTMLResponse)
+def admin_reschedule_page(
+    request: Request, booking_id: int, db: Session = Depends(get_db), _=AuthDep,
+):
+    booking = db.query(Booking).filter_by(id=booking_id, status="confirmed").first()
+    if not booking:
+        _flash(request, "Booking not found.", "error")
+        return RedirectResponse("/admin/bookings", status_code=302)
+    max_future = int(get_setting(db, "max_future_days", "30"))
+    now = datetime.utcnow()
+    min_date = now.date().isoformat()
+    max_date = (now + timedelta(days=max_future)).date().isoformat()
+    current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
+    return templates.TemplateResponse("admin/admin_reschedule.html", {
+        "request": request,
+        "booking": booking,
+        "min_date": min_date,
+        "max_date": max_date,
+        "current_display": current_display,
+        "flash": _get_flash(request),
+    })
+
+
+@router.post("/bookings/{booking_id}/reschedule")
+def admin_reschedule_booking(
+    request: Request, booking_id: int, db: Session = Depends(get_db), _=AuthDep,
+    _csrf_ok: None = Depends(require_csrf),
+    start_datetime: str = Form(...),
+):
+    from app.routers.booking import _perform_reschedule
+    booking = db.query(Booking).filter_by(id=booking_id, status="confirmed").first()
+    if not booking:
+        _flash(request, "Booking not found.", "error")
+        return RedirectResponse("/admin/bookings", status_code=302)
+    try:
+        new_start_dt = datetime.fromisoformat(start_datetime)
+    except (ValueError, TypeError):
+        _flash(request, "Invalid date/time.", "error")
+        return RedirectResponse(f"/admin/bookings/{booking_id}/reschedule", status_code=302)
+    settings = get_settings()
+    base_url = str(request.base_url).rstrip('/')
+    try:
+        _perform_reschedule(db, booking, new_start_dt, settings, base_url)
+        _flash(request, f"Booking for {booking.guest_name} rescheduled to {new_start_dt.strftime('%b %-d at %-I:%M %p')}.")
+    except ValueError as exc:
+        _flash(request, f"Reschedule failed: {exc}", "error")
+    return RedirectResponse("/admin/bookings", status_code=302)
+
+
 # ---------- Settings ----------
 
 @router.get("/settings", response_class=HTMLResponse)
