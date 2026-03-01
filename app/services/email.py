@@ -4,19 +4,31 @@ from html import escape
 
 
 def _format_dt(dt: datetime) -> str:
-    return dt.strftime("%A, %B %-d, %Y at %-I:%M %p UTC")
+    return dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
 
 
 # These are trusted fallback templates — all placeholders must match the kwargs in each send function.
 _GUEST_CONFIRMATION_DEFAULT = """\
-<h2>Your appointment is confirmed</h2>
+<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1e293b;">
+<h2 style="color:#059669;margin-bottom:.5rem;">Your appointment is confirmed!</h2>
 <p>Hi {guest_name},</p>
-<p>Your <strong>{appt_type}</strong> is confirmed:</p>
-<p><strong>Date/Time:</strong> {date_time}</p>
+<p>We&#39;re looking forward to seeing you. Here are your appointment details:</p>
+<table style="width:100%;border-collapse:collapse;margin:1rem 0;font-size:.95em;">
+  <tr style="border-bottom:1px solid #e2e8f0;">
+    <td style="padding:.5rem 1rem .5rem 0;color:#64748b;white-space:nowrap;vertical-align:top;">Appointment</td>
+    <td style="padding:.5rem 0;font-weight:600;">{appt_type}</td>
+  </tr>
+  <tr style="border-bottom:1px solid #e2e8f0;">
+    <td style="padding:.5rem 1rem .5rem 0;color:#64748b;white-space:nowrap;vertical-align:top;">Date &amp; Time</td>
+    <td style="padding:.5rem 0;">{date_time}</td>
+  </tr>
+  {location_row}
+</table>
 {custom_fields}
-<p>Need to reschedule? <a href="{reschedule_url}">Click here to pick a new time</a></p>
-<p>If you need to cancel, please reply to this email.</p>
-<p>— {owner_name}</p>"""
+<p style="margin-top:1.5rem;">Need to reschedule? <a href="{reschedule_url}" style="color:#2563eb;">Click here to pick a new time</a> — it&#39;s quick and easy.</p>
+<p style="color:#64748b;font-size:.9em;">To cancel your appointment, please reply to this email.</p>
+<p style="margin-top:1.5rem;">See you soon,<br><strong>{owner_name}</strong></p>
+</div>"""
 
 _ADMIN_ALERT_DEFAULT = """\
 <h2>New Booking: {guest_name}</h2>
@@ -48,12 +60,19 @@ def send_guest_confirmation(
     owner_name: str,
     template: str = "",
     reschedule_url: str = "",
+    location: str = "",
 ):
     resend.api_key = api_key
     custom_html = "".join(
         f"<p><strong>{escape(str(k))}:</strong> {escape(str(v))}</p>"
         for k, v in custom_responses.items() if v
     )
+    location_row = (
+        f'<tr style="border-bottom:1px solid #e2e8f0;">'
+        f'<td style="padding:.5rem 1rem .5rem 0;color:#64748b;white-space:nowrap;vertical-align:top;">Location</td>'
+        f'<td style="padding:.5rem 0;">{escape(location)}</td>'
+        f'</tr>'
+    ) if location.strip() else ""
     try:
         html = (template or _GUEST_CONFIRMATION_DEFAULT).format(
             guest_name=escape(guest_name),
@@ -62,6 +81,7 @@ def send_guest_confirmation(
             owner_name=escape(owner_name),
             custom_fields=custom_html,
             reschedule_url=escape(reschedule_url),
+            location_row=location_row,
         )
     except (KeyError, ValueError, IndexError):
         html = _GUEST_CONFIRMATION_DEFAULT.format(
@@ -71,6 +91,7 @@ def send_guest_confirmation(
             owner_name=escape(owner_name),
             custom_fields=custom_html,
             reschedule_url=escape(reschedule_url),
+            location_row=location_row,
         )
     resend.Emails.send({
         "from": from_email,

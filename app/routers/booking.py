@@ -150,7 +150,7 @@ def _perform_reschedule(
                 description="\n".join(description_lines),
                 start=start_utc,
                 end=end_utc,
-                attendee_email=booking.guest_email if not appt_type.admin_initiated else "",
+                attendee_email="",
                 location=appt_type.location if not appt_type.admin_initiated else booking.location,
                 show_as=appt_type.show_as,
                 visibility=appt_type.visibility,
@@ -191,6 +191,7 @@ def _perform_reschedule(
                     owner_name=get_setting(db, "owner_name", ""),
                     template=get_setting(db, "email_guest_confirmation", ""),
                     reschedule_url=reschedule_url,
+                    location=appt_type.location or "",
                 )
             except Exception:
                 pass
@@ -479,7 +480,7 @@ async def submit_booking(
                 description="\n".join(description_lines),
                 start=start_utc,
                 end=end_utc,
-                attendee_email=guest_email,
+                attendee_email="",
                 location=appt_type.location,
                 show_as=appt_type.show_as,
                 visibility=appt_type.visibility,
@@ -526,6 +527,7 @@ async def submit_booking(
                 owner_name=owner_name,
                 template=get_setting(db, "email_guest_confirmation", ""),
                 reschedule_url=reschedule_url,
+                location=appt_type.location or "",
             )
         except Exception:
             pass
