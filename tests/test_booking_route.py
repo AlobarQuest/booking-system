@@ -188,6 +188,32 @@ def test_booking_model_has_drive_time_event_ids():
     assert b._drive_time_event_ids == '["abc", "def"]'
 
 
+def test_create_drive_time_blocks_returns_list():
+    """_create_drive_time_blocks should return a list (possibly empty)."""
+    from unittest.mock import MagicMock, patch
+    from app.routers.booking import _create_drive_time_blocks
+    import datetime
+
+    cal = MagicMock()
+    cal.get_events_for_day.return_value = []
+    cal.create_event.return_value = "event-id-123"
+
+    with patch("app.routers.booking.get_drive_time", return_value=0):
+        result = _create_drive_time_blocks(
+            cal=cal,
+            refresh_token="tok",
+            calendar_id="primary",
+            appt_name="Home Tour",
+            appt_location="456 Elm St",
+            start_utc=datetime.datetime(2030, 9, 20, 14, 0),
+            end_utc=datetime.datetime(2030, 9, 20, 14, 30),
+            home_address="123 Main St",
+            db=MagicMock(),
+        )
+
+    assert isinstance(result, list)
+
+
 def test_confirmation_email_includes_reschedule_link():
     from unittest.mock import patch
     from app.config import Settings

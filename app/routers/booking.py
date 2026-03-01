@@ -31,19 +31,21 @@ def _create_drive_time_blocks(
     end_utc,
     home_address: str,
     db,
-) -> None:
+) -> list[str]:
     """Create BLOCK calendar events for drive time before and after the appointment.
 
+    Returns a list of created calendar event IDs (0-2 items).
     All datetimes must be naive UTC. Failures are fully silent — this is a
     best-effort calendar annotation, never blocking the booking confirmation.
     """
+    created_ids: list[str] = []
     window_start = start_utc - timedelta(hours=1)
     window_end = end_utc + timedelta(hours=1)
 
     try:
         nearby_events = cal.get_events_for_day(refresh_token, calendar_id, window_start, window_end)
     except Exception:
-        return
+        return created_ids
 
     # --- Before block: drive TO this appointment ---
     preceding = None
@@ -60,7 +62,7 @@ def _create_drive_time_blocks(
         drive_mins = get_drive_time(origin, appt_location, db)
         if drive_mins > 0:
             try:
-                cal.create_event(
+                event_id = cal.create_event(
                     refresh_token=refresh_token,
                     calendar_id=calendar_id,
                     summary=f"BLOCK - Drive Time for {appt_name}",
@@ -70,6 +72,8 @@ def _create_drive_time_blocks(
                     show_as="busy",
                     disable_reminders=True,
                 )
+                if event_id:
+                    created_ids.append(event_id)
             except Exception:
                 pass
 
@@ -86,7 +90,7 @@ def _create_drive_time_blocks(
             drive_mins = get_drive_time(appt_location, dest, db)
             if drive_mins > 0:
                 try:
-                    cal.create_event(
+                    event_id = cal.create_event(
                         refresh_token=refresh_token,
                         calendar_id=calendar_id,
                         summary=f"BLOCK - Drive Time for {following['summary']}",
@@ -96,8 +100,12 @@ def _create_drive_time_blocks(
                         show_as="busy",
                         disable_reminders=True,
                     )
+                    if event_id:
+                        created_ids.append(event_id)
                 except Exception:
                     pass
+
+    return created_ids
 
 
 def _perform_reschedule(
@@ -574,7 +582,7 @@ async def submit_booking(
         # Drive time block events (owner-only, non-fatal)
         if appt_type.requires_drive_time and appt_type.location:
             home_address = get_setting(db, "home_address", "")
-            _create_drive_time_blocks(
+            dt_ids = _create_drive_time_blocks(
                 cal=cal,
                 refresh_token=refresh_token,
                 calendar_id=appt_type.calendar_id,
@@ -585,6 +593,9 @@ async def submit_booking(
                 home_address=home_address,
                 db=db,
             )
+            if dt_ids:
+                booking.drive_time_event_ids = dt_ids
+                db.commit()
 
     # Email notifications
     notify_email = get_setting(db, "notify_email", "")
