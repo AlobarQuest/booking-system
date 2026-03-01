@@ -267,11 +267,12 @@ def create_type_rule(
             start_time=start_time,
             end_time=end_time,
             active=True,
-            appointment_type_id=type_id,
+            appointment_type_id=t.id,
         ))
         db.commit()
         _flash(request, "Availability window added.")
-    return RedirectResponse(f"/admin/appointment-types/{type_id}/edit", status_code=302)
+        return RedirectResponse(f"/admin/appointment-types/{t.id}/edit", status_code=302)
+    return RedirectResponse("/admin/appointment-types", status_code=302)
 
 
 @router.post("/appointment-types/{type_id}/rules/{rule_id}/delete")
@@ -285,10 +286,12 @@ def delete_type_rule(
 ):
     rule = db.query(AvailabilityRule).filter_by(id=rule_id, appointment_type_id=type_id).first()
     if rule:
+        appt_type_id = rule.appointment_type_id
         db.delete(rule)
         db.commit()
         _flash(request, "Rule deleted.")
-    return RedirectResponse(f"/admin/appointment-types/{type_id}/edit", status_code=302)
+        return RedirectResponse(f"/admin/appointment-types/{appt_type_id}/edit", status_code=302)
+    return RedirectResponse("/admin/appointment-types", status_code=302)
 
 
 # ---------- Availability ----------
@@ -513,7 +516,7 @@ def admin_reschedule_booking(
         new_start_dt = datetime.fromisoformat(start_datetime)
     except (ValueError, TypeError):
         _flash(request, "Invalid date/time.", "error")
-        return RedirectResponse(f"/admin/bookings/{booking_id}/reschedule", status_code=302)
+        return RedirectResponse(f"/admin/bookings/{booking.id}/reschedule", status_code=302)
     settings = get_settings()
     base_url = str(request.base_url).rstrip('/')
     try:
