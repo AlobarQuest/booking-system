@@ -120,6 +120,7 @@ def test_submit_booking_passes_disable_reminders_when_owner_reminders_disabled()
             "start_datetime": "2026-03-01T10:00:00",
             "guest_name": "Alice",
             "guest_email": "alice@example.com",
+            "guest_phone": "555-1234",
         })
     assert response.status_code == 200
     assert mock_create.called
@@ -191,6 +192,7 @@ def test_submit_booking_does_not_disable_reminders_when_owner_reminders_enabled(
             "start_datetime": "2026-03-01T10:00:00",
             "guest_name": "Bob",
             "guest_email": "bob@example.com",
+            "guest_phone": "555-1234",
         })
     assert response.status_code == 200
     assert mock_create.called

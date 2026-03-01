@@ -497,7 +497,7 @@ async def submit_booking(
     guest_phone = str(form_data.get("guest_phone", "")).strip()
     notes = str(form_data.get("notes", "")).strip()
 
-    if not all([type_id_str, start_datetime_str, guest_name, guest_email]):
+    if not all([type_id_str, start_datetime_str, guest_name, guest_email, guest_phone]):
         return templates.TemplateResponse("booking/error_partial.html", {
             "request": request, "message": "Please fill in all required fields."
         })

@@ -334,6 +334,7 @@ def test_submit_booking_calls_drive_time_blocks_when_requires_drive_time():
                     "start_datetime": "2026-03-01T10:00:00",
                     "guest_name": "Alice",
                     "guest_email": "alice@example.com",
+                    "guest_phone": "555-1234",
                 })
 
     assert response.status_code == 200
