@@ -136,6 +136,47 @@ def test_reschedule_post_invalid_token():
     app.dependency_overrides.clear()
 
 
+def test_cancel_deletes_drive_time_events():
+    """Guest cancel should delete drive time block events stored on the booking."""
+    from unittest.mock import patch, MagicMock
+    client, db_session = make_client_with_booking()
+
+    # Store fake drive time event IDs on the booking
+    db = db_session()
+    booking = db.query(Booking).first()
+    booking._drive_time_event_ids = '["dt-before-id", "dt-after-id"]'
+    booking.google_event_id = "main-event-id"
+    db.commit()
+    token = booking.reschedule_token
+    db.close()
+
+    deleted_ids = []
+
+    def fake_delete(refresh_token, calendar_id, event_id):
+        deleted_ids.append(event_id)
+
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost/callback"
+    mock_settings.resend_api_key = ""
+    mock_settings.from_email = "test@example.com"
+
+    with patch("app.routers.booking.get_settings", return_value=mock_settings), \
+         patch("app.services.calendar.CalendarService.delete_event", side_effect=fake_delete):
+        db2 = db_session()
+        from app.dependencies import set_setting
+        set_setting(db2, "google_refresh_token", "fake-token")
+        db2.commit()
+        db2.close()
+
+        response = client.post(f"/cancel/{token}")
+
+    assert "dt-before-id" in deleted_ids
+    assert "dt-after-id" in deleted_ids
+    app.dependency_overrides.clear()
+
+
 def test_reschedule_creates_event_before_deleting_old():
     from unittest.mock import patch, MagicMock
     from app.config import Settings

@@ -108,6 +108,15 @@ def _create_drive_time_blocks(
     return created_ids
 
 
+def _delete_drive_time_events(cal, refresh_token: str, calendar_id: str, event_ids: list[str]) -> None:
+    """Delete stored drive time BLOCK calendar events. All failures are non-fatal."""
+    for event_id in event_ids:
+        try:
+            cal.delete_event(refresh_token, calendar_id, event_id)
+        except Exception:
+            pass
+
+
 def _perform_reschedule(
     db: Session,
     booking: Booking,
@@ -367,7 +376,7 @@ async def submit_cancel(
 
     # Delete Google Calendar event (non-fatal)
     refresh_token = get_setting(db, "google_refresh_token", "")
-    if booking.google_event_id and refresh_token and settings.google_client_id:
+    if refresh_token and settings.google_client_id:
         try:
             from app.services.calendar import CalendarService
             cal = CalendarService(
@@ -375,7 +384,9 @@ async def submit_cancel(
                 settings.google_client_secret,
                 settings.google_redirect_uri,
             )
-            cal.delete_event(refresh_token, appt_type.calendar_id, booking.google_event_id)
+            if booking.google_event_id:
+                cal.delete_event(refresh_token, appt_type.calendar_id, booking.google_event_id)
+            _delete_drive_time_events(cal, refresh_token, appt_type.calendar_id, booking.drive_time_event_ids)
         except Exception:
             pass
 

@@ -421,14 +421,17 @@ def cancel_booking_route(
 
     settings = get_settings()
     refresh_token = get_setting(db, "google_refresh_token", "")
-    if booking.google_event_id and refresh_token and settings.google_client_id:
+    if refresh_token and settings.google_client_id:
         try:
             cal = CalendarService(
                 settings.google_client_id,
                 settings.google_client_secret,
                 settings.google_redirect_uri,
             )
-            cal.delete_event(refresh_token, booking.appointment_type.calendar_id, booking.google_event_id)
+            if booking.google_event_id:
+                cal.delete_event(refresh_token, booking.appointment_type.calendar_id, booking.google_event_id)
+            from app.routers.booking import _delete_drive_time_events
+            _delete_drive_time_events(cal, refresh_token, booking.appointment_type.calendar_id, booking.drive_time_event_ids)
         except Exception:
             pass
 
