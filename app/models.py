@@ -102,6 +102,7 @@ class Booking(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     location: Mapped[str] = mapped_column(Text, default="")
     reschedule_token: Mapped[str] = mapped_column(String(36), default=lambda: str(uuid.uuid4()), unique=True)
+    _drive_time_event_ids: Mapped[str] = mapped_column("drive_time_event_ids", Text, default="[]")
     appointment_type: Mapped["AppointmentType"] = relationship(back_populates="bookings")
 
     @property
@@ -111,6 +112,14 @@ class Booking(Base):
     @custom_field_responses.setter
     def custom_field_responses(self, value: dict):
         self._custom_field_responses = json.dumps(value)
+
+    @property
+    def drive_time_event_ids(self) -> list[str]:
+        return json.loads(self._drive_time_event_ids or "[]")
+
+    @drive_time_event_ids.setter
+    def drive_time_event_ids(self, value: list[str]):
+        self._drive_time_event_ids = json.dumps(value)
 
 
 class Setting(Base):

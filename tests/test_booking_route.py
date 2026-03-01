@@ -179,6 +179,15 @@ def test_booking_has_reschedule_token():
     app.dependency_overrides.clear()
 
 
+def test_booking_model_has_drive_time_event_ids():
+    from app.models import Booking
+    b = Booking()
+    b._drive_time_event_ids = "[]"
+    assert b.drive_time_event_ids == []
+    b.drive_time_event_ids = ["abc", "def"]
+    assert b._drive_time_event_ids == '["abc", "def"]'
+
+
 def test_confirmation_email_includes_reschedule_link():
     from unittest.mock import patch
     from app.config import Settings
