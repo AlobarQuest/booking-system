@@ -17,7 +17,7 @@
   <label>Date
     <input type="date" id="reschedule-date"
       min="{{ min_date }}" max="{{ max_date }}"
-      hx-get="/reschedule/{{ booking.reschedule_token }}/slots"
+      hx-get="/admin/bookings/{{ booking.id }}/reschedule/slots"
       hx-target="#slot-area"
       hx-swap="innerHTML"
       hx-trigger="change">

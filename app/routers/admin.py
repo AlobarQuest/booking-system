@@ -3,7 +3,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -449,6 +449,30 @@ def cancel_booking_route(
 
 
 # ---------- Reschedule ----------
+
+@router.get("/bookings/{booking_id}/reschedule/slots", response_class=HTMLResponse)
+def admin_reschedule_slots(
+    request: Request, booking_id: int, date: str = Query(""), db: Session = Depends(get_db), _=AuthDep,
+):
+    from app.routers.slots import _compute_slots_for_type
+    from datetime import date as date_type
+    from fastapi.responses import HTMLResponse as _HTMLResponse
+    booking = db.query(Booking).filter_by(id=booking_id, status="confirmed").first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+    try:
+        target_date = date_type.fromisoformat(date)
+    except ValueError:
+        return _HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
+    slot_data = _compute_slots_for_type(
+        booking.appointment_type, target_date, db,
+        destination=booking.location, skip_advance_notice=True,
+    )
+    return templates.TemplateResponse(
+        "booking/reschedule_slots_partial.html",
+        {"request": request, "slots": slot_data},
+    )
+
 
 @router.get("/bookings/{booking_id}/reschedule", response_class=HTMLResponse)
 def admin_reschedule_page(

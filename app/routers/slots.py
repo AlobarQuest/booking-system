@@ -28,11 +28,13 @@ def _compute_slots_for_type(
     target_date,
     db,
     destination: str = "",
+    skip_advance_notice: bool = False,
 ) -> list[dict]:
     """Compute available time slots for a given appointment type and date.
 
     Returns a list of {"value": "HH:MM", "display": "H:MM AM/PM"} dicts.
     destination: override location (used for admin_initiated types).
+    skip_advance_notice: when True, omit the advance-notice cutoff filter (used by admin).
     """
     settings = get_settings()
     effective_location = destination if appt_type.admin_initiated else appt_type.location
@@ -138,7 +140,8 @@ def _compute_slots_for_type(
         windows, appt_type.duration_minutes,
         appt_type.buffer_before_minutes, appt_type.buffer_after_minutes,
     )
-    slots = filter_by_advance_notice(slots, target_date, min_advance, now_local)
+    if not skip_advance_notice:
+        slots = filter_by_advance_notice(slots, target_date, min_advance, now_local)
 
     return [
         {"value": s.strftime("%H:%M"), "display": s.strftime("%-I:%M %p")}
