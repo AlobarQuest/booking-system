@@ -225,3 +225,80 @@ def test_group_showing_skips_drive_time_blocks():
     assert len(block_calls) == 0, \
         "Drive time block events must NOT be created for a group showing"
     app.dependency_overrides.clear()
+
+
+def test_first_group_showing_booking_still_creates_drive_time_blocks():
+    """The first booking on a group-showing type must still trigger drive time blocks."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    appt = AppointmentType(
+        name="First Tour", duration_minutes=30,
+        buffer_before_minutes=0, buffer_after_minutes=0,
+        calendar_id="primary", active=True, color="#3b82f6",
+        location="456 Oak Ave",
+        max_concurrent=2,
+        requires_drive_time=True,
+    )
+    appt._custom_fields = "[]"
+    db.add(appt)
+    rule = AvailabilityRule(day_of_week=0, start_time="09:00", end_time="17:00", active=True)
+    db.add(rule)
+    db.commit()
+    type_id = appt.id
+    db.close()
+
+    def override():
+        s = Session()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_db] = override
+    app.dependency_overrides[require_csrf] = lambda: None
+    client = TestClient(app)
+
+    block_calls = []
+
+    def fake_blocks(*args, **kwargs):
+        block_calls.append(True)
+        return []
+
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost"
+    mock_settings.resend_api_key = ""
+    mock_settings.from_email = "test@example.com"
+
+    with patch("app.routers.booking.get_settings", return_value=mock_settings), \
+         patch("app.routers.booking._create_drive_time_blocks", side_effect=fake_blocks), \
+         patch("app.services.calendar.CalendarService.create_event", return_value="evt-id"):
+        db2 = Session()
+        set_setting(db2, "google_refresh_token", "fake-token")
+        db2.commit()
+        db2.close()
+
+        response = client.post("/book", data={
+            "type_id": str(type_id),
+            "start_datetime": BOOKING_START.isoformat(),
+            "guest_name": "First Guest",
+            "guest_email": "first@example.com",
+            "guest_phone": "555-1111",
+        })
+
+    assert response.status_code == 200
+    assert len(block_calls) == 1, \
+        "Drive time block events MUST be created for the first booking on a group-showing type"
+    app.dependency_overrides.clear()
