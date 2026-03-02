@@ -176,3 +176,52 @@ def test_standard_type_blocks_slot_normally():
     assert "1:00 PM" not in response.text, \
         "1:00 PM slot should be blocked for standard type (max_concurrent=1)"
     app.dependency_overrides.clear()
+
+
+def test_group_showing_skips_drive_time_blocks():
+    """A group showing booking should not trigger _create_drive_time_blocks."""
+    from app.limiter import limiter
+    limiter._storage.reset()
+
+    client, Session, type_id = make_group_client(max_concurrent=2)
+
+    # Enable drive time on the appointment type
+    db = Session()
+    appt = db.query(AppointmentType).filter_by(id=type_id).first()
+    appt.requires_drive_time = True
+    db.commit()
+    db.close()
+
+    block_calls = []
+
+    def fake_blocks(*args, **kwargs):
+        block_calls.append(True)
+        return []
+
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost"
+    mock_settings.resend_api_key = ""
+    mock_settings.from_email = "test@example.com"
+
+    with patch("app.routers.booking.get_settings", return_value=mock_settings), \
+         patch("app.routers.booking._create_drive_time_blocks", side_effect=fake_blocks), \
+         patch("app.services.calendar.CalendarService.create_event", return_value="evt-id"):
+        db2 = Session()
+        set_setting(db2, "google_refresh_token", "fake-token")
+        db2.commit()
+        db2.close()
+
+        response = client.post("/book", data={
+            "type_id": str(type_id),
+            "start_datetime": BOOKING_START.isoformat(),
+            "guest_name": "Second Guest",
+            "guest_email": "second@example.com",
+            "guest_phone": "555-9999",
+        })
+
+    assert response.status_code == 200
+    assert len(block_calls) == 0, \
+        "Drive time block events must NOT be created for a group showing"
+    app.dependency_overrides.clear()
