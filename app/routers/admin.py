@@ -104,6 +104,7 @@ async def create_appt_type(
     rental_requirements_json: str = Form("[]"),
     owner_reminders_enabled: str = Form("false"),
     admin_initiated: str = Form("false"),
+    max_concurrent: int = Form(1),
     photo: UploadFile | None = File(None),
     remove_photo: str = Form(""),
     db: Session = Depends(get_db),
@@ -123,6 +124,7 @@ async def create_appt_type(
         listing_url=_validate_url(listing_url),
         rental_application_url=_validate_url(rental_application_url),
         owner_reminders_enabled=(owner_reminders_enabled == "true"),
+        max_concurrent=max(1, max_concurrent),
         active=True,
     )
     t.custom_fields = []
@@ -185,6 +187,7 @@ async def update_appt_type(
     rental_requirements_json: str = Form("[]"),
     owner_reminders_enabled: str = Form("false"),
     admin_initiated: str = Form("false"),
+    max_concurrent: int = Form(1),
     photo: UploadFile | None = File(None),
     remove_photo: str = Form(""),
     db: Session = Depends(get_db), _=AuthDep,
@@ -210,6 +213,7 @@ async def update_appt_type(
         t.listing_url = _validate_url(listing_url)
         t.rental_application_url = _validate_url(rental_application_url)
         t.owner_reminders_enabled = (owner_reminders_enabled == "true")
+        t.max_concurrent = max(1, max_concurrent)
         try:
             t.rental_requirements = json.loads(rental_requirements_json)
         except (json.JSONDecodeError, ValueError):

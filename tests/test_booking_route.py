@@ -238,6 +238,20 @@ def test_booking_requires_phone():
     app.dependency_overrides.clear()
 
 
+def test_appointment_type_has_max_concurrent():
+    from app.models import AppointmentType
+    # Default should be 1
+    at = AppointmentType(
+        name="Test", duration_minutes=30,
+        buffer_before_minutes=0, buffer_after_minutes=0,
+        calendar_id="primary", active=True, color="#3b82f6",
+    )
+    assert at.max_concurrent == 1
+    # Should accept higher values
+    at.max_concurrent = 3
+    assert at.max_concurrent == 3
+
+
 def test_confirmation_email_includes_reschedule_link():
     from unittest.mock import patch
     from app.config import Settings

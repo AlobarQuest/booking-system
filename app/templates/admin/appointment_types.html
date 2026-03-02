@@ -236,6 +236,17 @@
       <small style="color:#64748b;margin-top:-.5rem;">
         When unchecked, your calendar event is created with no reminders/notifications.
       </small>
+
+      <hr style="margin:1rem 0;border:none;border-top:1px solid #e2e8f0;">
+      <label>Max concurrent bookings (Group Showings)
+        <input type="number" name="max_concurrent" min="1" max="20"
+               value="{{ edit_type.max_concurrent if edit_type else 1 }}"
+               style="width:80px;">
+      </label>
+      <small style="color:#64748b;margin-top:-.5rem;">
+        Set to 2 or more to allow multiple guests to book the same time slot
+        (e.g. group property showings). Default: 1 (no overlap allowed).
+      </small>
     </div>
 
     <div style="display:flex;gap:.75rem;margin-top:.25rem;">

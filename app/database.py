@@ -49,6 +49,7 @@ def init_db():
             ("rental_requirements", "TEXT NOT NULL DEFAULT '[]'"),
             ("owner_reminders_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
             ("admin_initiated", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("max_concurrent", "INTEGER NOT NULL DEFAULT 1"),
         ]:
             if col not in existing:
                 conn.execute(text(f"ALTER TABLE appointment_types ADD COLUMN {col} {definition}"))
