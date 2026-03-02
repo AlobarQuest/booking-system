@@ -302,3 +302,34 @@ def test_first_group_showing_booking_still_creates_drive_time_blocks():
     assert len(block_calls) == 1, \
         "Drive time block events MUST be created for the first booking on a group-showing type"
     app.dependency_overrides.clear()
+
+
+def test_admin_bookings_shows_group_badge():
+    """Admin bookings list should show a 'Group' badge for overlapping same-type bookings."""
+    from app.routers.admin import require_admin
+
+    client, Session, type_id = make_group_client(max_concurrent=2)
+    app.dependency_overrides[require_admin] = lambda: "admin"
+
+    # Add a second overlapping confirmed booking so the overlap logic fires
+    db = Session()
+    second = Booking(
+        appointment_type_id=type_id,
+        start_datetime=BOOKING_START,
+        end_datetime=BOOKING_END,
+        guest_name="Second Guest",
+        guest_email="second@example.com",
+        guest_phone="555-0002",
+        status="confirmed",
+    )
+    second._custom_field_responses = "{}"
+    db.add(second)
+    db.commit()
+    db.close()
+
+    response = client.get("/admin/bookings")
+
+    assert response.status_code == 200
+    assert "Group" in response.text, \
+        "Should show 'Group' badge for the overlapping booking in the bookings list"
+    app.dependency_overrides.clear()

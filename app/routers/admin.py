@@ -408,8 +408,22 @@ def bookings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         .limit(50)
         .all()
     )
+
+    # Identify bookings that overlap with another confirmed booking of the same type
+    confirmed_shown = upcoming + [b for b in past if b.status == "confirmed"]
+    group_showing_ids: set[int] = set()
+    for b in confirmed_shown:
+        for other in confirmed_shown:
+            if (other.id != b.id
+                    and other.appointment_type_id == b.appointment_type_id
+                    and b.start_datetime < other.end_datetime
+                    and b.end_datetime > other.start_datetime):
+                group_showing_ids.add(b.id)
+                break
+
     return templates.TemplateResponse("admin/bookings.html", {
-        "request": request, "upcoming": upcoming, "past": past, "flash": _get_flash(request),
+        "request": request, "upcoming": upcoming, "past": past,
+        "group_showing_ids": group_showing_ids, "flash": _get_flash(request),
     })
 
 
