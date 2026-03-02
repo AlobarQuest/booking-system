@@ -19,11 +19,7 @@
     <td>
       {{ b.appointment_type.name }}
       {% if b.id in group_showing_ids %}
-      <span style="display:inline-block;font-size:.7rem;font-weight:600;
-                   padding:.1rem .4rem;border-radius:4px;
-                   background:#dcfce7;color:#166534;margin-left:.25rem;">
-        Group
-      </span>
+      <span class="badge-group">Group</span>
       {% endif %}
     </td>
     <td>{{ b.guest_name }}</td>
@@ -60,11 +56,7 @@
       <td>
         {{ b.appointment_type.name }}
         {% if b.id in group_showing_ids %}
-        <span style="display:inline-block;font-size:.7rem;font-weight:600;
-                     padding:.1rem .4rem;border-radius:4px;
-                     background:#dcfce7;color:#166534;margin-left:.25rem;">
-          Group
-        </span>
+        <span class="badge-group">Group</span>
         {% endif %}
       </td>
       <td>{{ b.guest_name }}</td>

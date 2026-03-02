@@ -231,3 +231,14 @@ h2 { font-size: 1.25rem; margin-bottom: 1rem; color: #1e293b; }
   .admin-container { padding: .75rem; }
   .admin-nav { gap: 1rem; }
 }
+
+.badge-group {
+  display: inline-block;
+  font-size: .7rem;
+  font-weight: 600;
+  padding: .1rem .4rem;
+  border-radius: 4px;
+  background: #dcfce7;
+  color: #166534;
+  margin-left: .25rem;
+}

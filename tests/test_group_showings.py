@@ -333,3 +333,19 @@ def test_admin_bookings_shows_group_badge():
     assert "Group" in response.text, \
         "Should show 'Group' badge for the overlapping booking in the bookings list"
     app.dependency_overrides.clear()
+
+
+def test_admin_bookings_no_group_badge_for_solo_booking():
+    """Admin bookings list must NOT show a 'Group' badge for a booking with no overlap."""
+    from app.routers.admin import require_admin
+
+    # make_group_client creates one confirmed booking — no overlap, so no badge
+    client, Session, type_id = make_group_client(max_concurrent=2)
+    app.dependency_overrides[require_admin] = lambda: "admin"
+
+    response = client.get("/admin/bookings")
+
+    assert response.status_code == 200
+    assert "Group" not in response.text, \
+        "Solo booking (no overlap) must NOT receive a Group badge"
+    app.dependency_overrides.clear()
