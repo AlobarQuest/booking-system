@@ -26,7 +26,7 @@ A personal appointment booking system built with FastAPI + SQLite. It provides a
 | Production | `master` | `https://booking.devonwatkins.com` | `hkw488ggssgcskk0ooc0ksk0` |
 | Preview | `preview` | `https://preview.booking.devonwatkins.com` | `yscogs0wggcgco8g4wwk0o0g` |
 
-**Branch workflow:** create feature branch/worktree from `master` → implement → merge to `master` → push → reset `preview` to `master` for testing.
+**Branch workflow:** create feature branch/worktree from `master` → implement → push branch to GitHub → open PR → CI must pass (`test` check) → merge via GitHub UI → Coolify auto-deploys from `master` → reset `preview` to `master` (`git push origin master:preview --force`).
 
 **Webhook:** both services share the GitHub webhook at `http://178.156.247.239:8000/webhooks/source/github/events/manual` with secret `Red57Chair!01`. Both Coolify services must have that secret saved under Webhooks → GitHub Webhook Secret.
 
