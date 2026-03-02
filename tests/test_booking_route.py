@@ -240,17 +240,26 @@ def test_booking_requires_phone():
 
 def test_appointment_type_has_max_concurrent():
     from app.models import AppointmentType
-    # Field exists and accepts integer values
+    # Verify round-trip persistence of max_concurrent column
+    _, Session = setup_client()
+    db = Session()
     at = AppointmentType(
-        name="Test", duration_minutes=30,
+        name="Group Test", duration_minutes=30,
         buffer_before_minutes=0, buffer_after_minutes=0,
         calendar_id="primary", active=True, color="#3b82f6",
-        max_concurrent=1,
+        max_concurrent=3,
     )
-    assert at.max_concurrent == 1
-    # Should accept higher values
-    at.max_concurrent = 3
-    assert at.max_concurrent == 3
+    at._custom_fields = "[]"
+    db.add(at)
+    db.commit()
+    at_id = at.id
+    db.close()
+
+    db2 = Session()
+    reloaded = db2.query(AppointmentType).filter_by(id=at_id).first()
+    assert reloaded.max_concurrent == 3
+    db2.close()
+    app.dependency_overrides.clear()
 
 
 def test_confirmation_email_includes_reschedule_link():
