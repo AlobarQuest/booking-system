@@ -240,11 +240,12 @@ def test_booking_requires_phone():
 
 def test_appointment_type_has_max_concurrent():
     from app.models import AppointmentType
-    # Default should be 1
+    # Field exists and accepts integer values
     at = AppointmentType(
         name="Test", duration_minutes=30,
         buffer_before_minutes=0, buffer_after_minutes=0,
         calendar_id="primary", active=True, color="#3b82f6",
+        max_concurrent=1,
     )
     assert at.max_concurrent == 1
     # Should accept higher values

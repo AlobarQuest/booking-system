@@ -37,10 +37,6 @@ class AppointmentType(Base):
     max_concurrent: Mapped[int] = mapped_column(Integer, default=1)
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
 
-    def __init__(self, **kw):
-        kw.setdefault("max_concurrent", 1)
-        super().__init__(**kw)
-
     @property
     def custom_fields(self) -> list:
         return json.loads(self._custom_fields)
