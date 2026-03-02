@@ -121,8 +121,7 @@ def _compute_slots_for_type(
         except Exception:
             pass
 
-    # Group showings: un-block same-type confirmed booking intervals so the slot
-    # engine sees them as available, then post-filter by concurrent count.
+    # Group showings: query confirmed same-type bookings for post-filtering.
     same_type_bookings: list = []
     if appt_type.max_concurrent > 1:
         day_local_start = datetime.combine(target_date, time_type(0, 0))
@@ -133,18 +132,6 @@ def _compute_slots_for_type(
             Booking.start_datetime >= day_local_start,
             Booking.start_datetime <= day_local_end,
         ).all()
-        if same_type_bookings:
-            # Calendar events are created with end = start + duration + buffer_after,
-            # but booking.end_datetime stores only start + duration. Add the buffer
-            # so the tuple matches what Google Calendar's freebusy API returns.
-            buf = timedelta(minutes=appt_type.buffer_after_minutes)
-            same_type_intervals = {
-                (b.start_datetime, b.end_datetime + buf) for b in same_type_bookings
-            }
-            busy_intervals = [
-                (s, e) for (s, e) in busy_intervals
-                if (s, e) not in same_type_intervals
-            ]
 
     windows = _build_free_windows(target_date, rules, blocked, busy_intervals, appointment_type_id=appt_type.id)
 
@@ -168,8 +155,20 @@ def _compute_slots_for_type(
     if not skip_advance_notice:
         slots = filter_by_advance_notice(slots, target_date, min_advance, now_local)
 
-    # Group showings: post-filter — slot is only valid if concurrent count < max_concurrent
+    # Group showings: inject same-type booking start times back as candidates,
+    # then post-filter by concurrent count.
+    #
+    # Why inject instead of un-blocking freebusy intervals: Google Calendar's
+    # freebusy API merges adjacent events (e.g. a drive-time block ending at
+    # 1:00 PM and a booking starting at 1:00 PM become one interval 12:30-1:20).
+    # Exact-tuple removal cannot split merged intervals, so the slot stays
+    # blocked even when capacity remains. Injecting the booking start times
+    # directly bypasses this limitation — the DB is the source of truth for
+    # which same-type slots have been taken.
     if appt_type.max_concurrent > 1 and same_type_bookings:
+        booking_times = {b.start_datetime.time() for b in same_type_bookings}
+        slots = sorted(set(slots) | booking_times)
+
         def _overlapping_count(slot_time) -> int:
             slot_start_dt = datetime.combine(target_date, slot_time)
             slot_end_dt = slot_start_dt + timedelta(minutes=appt_type.duration_minutes)
