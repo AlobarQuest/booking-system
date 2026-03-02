@@ -678,6 +678,7 @@ async def submit_booking(
                     notes=notes,
                     custom_responses=custom_responses,
                     template=get_setting(db, "email_admin_alert", ""),
+                    location=appt_type.location or "",
                 )
             except Exception:
                 pass

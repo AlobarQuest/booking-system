@@ -35,7 +35,7 @@ _ADMIN_ALERT_DEFAULT = """\
 <h2>New Booking: {guest_name}</h2>
 <p><strong>Type:</strong> {appt_type}</p>
 <p><strong>Date/Time:</strong> {date_time}</p>
-<p><strong>Guest:</strong> {guest_name}</p>
+{location_line}<p><strong>Guest:</strong> {guest_name}</p>
 <p><strong>Email:</strong> {guest_email}</p>
 <p><strong>Phone:</strong> {guest_phone}</p>
 {custom_fields}
@@ -126,12 +126,14 @@ def send_admin_alert(
     notes: str,
     custom_responses: dict,
     template: str = "",
+    location: str = "",
 ):
     resend.api_key = api_key
     custom_html = "".join(
         f"<p><strong>{escape(str(k))}:</strong> {escape(str(v))}</p>"
         for k, v in custom_responses.items() if v
     )
+    location_line = f"<p><strong>Location:</strong> {escape(location)}</p>\n" if location.strip() else ""
     try:
         html = (template or _ADMIN_ALERT_DEFAULT).format(
             guest_name=escape(guest_name),
@@ -141,6 +143,7 @@ def send_admin_alert(
             date_time=_format_dt(start_dt),
             notes=escape(notes or "none"),
             custom_fields=custom_html,
+            location_line=location_line,
         )
     except (KeyError, ValueError, IndexError):
         html = _ADMIN_ALERT_DEFAULT.format(
@@ -151,6 +154,7 @@ def send_admin_alert(
             date_time=_format_dt(start_dt),
             notes=escape(notes or "none"),
             custom_fields=custom_html,
+            location_line=location_line,
         )
     resend.Emails.send({
         "from": from_email,
