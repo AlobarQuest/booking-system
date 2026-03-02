@@ -134,8 +134,12 @@ def _compute_slots_for_type(
             Booking.start_datetime <= day_local_end,
         ).all()
         if same_type_bookings:
+            # Calendar events are created with end = start + duration + buffer_after,
+            # but booking.end_datetime stores only start + duration. Add the buffer
+            # so the tuple matches what Google Calendar's freebusy API returns.
+            buf = timedelta(minutes=appt_type.buffer_after_minutes)
             same_type_intervals = {
-                (b.start_datetime, b.end_datetime) for b in same_type_bookings
+                (b.start_datetime, b.end_datetime + buf) for b in same_type_bookings
             }
             busy_intervals = [
                 (s, e) for (s, e) in busy_intervals
