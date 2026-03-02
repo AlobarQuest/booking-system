@@ -104,6 +104,7 @@ async def create_appt_type(
     rental_requirements_json: str = Form("[]"),
     owner_reminders_enabled: str = Form("false"),
     admin_initiated: str = Form("false"),
+    max_concurrent: int = Form(1),
     photo: UploadFile | None = File(None),
     remove_photo: str = Form(""),
     db: Session = Depends(get_db),
@@ -123,6 +124,7 @@ async def create_appt_type(
         listing_url=_validate_url(listing_url),
         rental_application_url=_validate_url(rental_application_url),
         owner_reminders_enabled=(owner_reminders_enabled == "true"),
+        max_concurrent=max(1, max_concurrent),
         active=True,
     )
     t.custom_fields = []
@@ -185,6 +187,7 @@ async def update_appt_type(
     rental_requirements_json: str = Form("[]"),
     owner_reminders_enabled: str = Form("false"),
     admin_initiated: str = Form("false"),
+    max_concurrent: int = Form(1),
     photo: UploadFile | None = File(None),
     remove_photo: str = Form(""),
     db: Session = Depends(get_db), _=AuthDep,
@@ -210,6 +213,7 @@ async def update_appt_type(
         t.listing_url = _validate_url(listing_url)
         t.rental_application_url = _validate_url(rental_application_url)
         t.owner_reminders_enabled = (owner_reminders_enabled == "true")
+        t.max_concurrent = max(1, max_concurrent)
         try:
             t.rental_requirements = json.loads(rental_requirements_json)
         except (json.JSONDecodeError, ValueError):
@@ -404,8 +408,22 @@ def bookings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         .limit(50)
         .all()
     )
+
+    # Identify bookings that overlap with another confirmed booking of the same type
+    confirmed_shown = upcoming + [b for b in past if b.status == "confirmed"]
+    group_showing_ids: set[int] = set()
+    for b in confirmed_shown:
+        for other in confirmed_shown:
+            if (other.id != b.id
+                    and other.appointment_type_id == b.appointment_type_id
+                    and b.start_datetime < other.end_datetime
+                    and b.end_datetime > other.start_datetime):
+                group_showing_ids.add(b.id)
+                break
+
     return templates.TemplateResponse("admin/bookings.html", {
-        "request": request, "upcoming": upcoming, "past": past, "flash": _get_flash(request),
+        "request": request, "upcoming": upcoming, "past": past,
+        "group_showing_ids": group_showing_ids, "flash": _get_flash(request),
     })
 
 

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_setting
-from app.models import AppointmentType, AvailabilityRule, BlockedPeriod
+from app.models import AppointmentType, Booking, AvailabilityRule, BlockedPeriod
 from app.services.availability import (
     _build_free_windows,
     intersect_windows,
@@ -121,6 +121,27 @@ def _compute_slots_for_type(
         except Exception:
             pass
 
+    # Group showings: un-block same-type confirmed booking intervals so the slot
+    # engine sees them as available, then post-filter by concurrent count.
+    same_type_bookings: list = []
+    if appt_type.max_concurrent > 1:
+        day_local_start = datetime.combine(target_date, time_type(0, 0))
+        day_local_end = datetime.combine(target_date, time_type(23, 59, 59))
+        same_type_bookings = db.query(Booking).filter(
+            Booking.appointment_type_id == appt_type.id,
+            Booking.status == "confirmed",
+            Booking.start_datetime >= day_local_start,
+            Booking.start_datetime <= day_local_end,
+        ).all()
+        if same_type_bookings:
+            same_type_intervals = {
+                (b.start_datetime, b.end_datetime) for b in same_type_bookings
+            }
+            busy_intervals = [
+                (s, e) for (s, e) in busy_intervals
+                if (s, e) not in same_type_intervals
+            ]
+
     windows = _build_free_windows(target_date, rules, blocked, busy_intervals, appointment_type_id=appt_type.id)
 
     if window_intervals:
@@ -142,6 +163,17 @@ def _compute_slots_for_type(
     )
     if not skip_advance_notice:
         slots = filter_by_advance_notice(slots, target_date, min_advance, now_local)
+
+    # Group showings: post-filter — slot is only valid if concurrent count < max_concurrent
+    if appt_type.max_concurrent > 1 and same_type_bookings:
+        def _overlapping_count(slot_time) -> int:
+            slot_start_dt = datetime.combine(target_date, slot_time)
+            slot_end_dt = slot_start_dt + timedelta(minutes=appt_type.duration_minutes)
+            return sum(
+                1 for b in same_type_bookings
+                if b.start_datetime < slot_end_dt and b.end_datetime > slot_start_dt
+            )
+        slots = [s for s in slots if _overlapping_count(s) < appt_type.max_concurrent]
 
     return [
         {"value": s.strftime("%H:%M"), "display": s.strftime("%-I:%M %p")}

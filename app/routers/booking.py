@@ -535,14 +535,14 @@ async def submit_booking(
 
     end_dt = start_dt + timedelta(minutes=appt_type.duration_minutes)
 
-    # Check for conflicts
-    conflict = db.query(Booking).filter(
+    # Check for conflicts — respect max_concurrent for group showings
+    overlap_count = db.query(Booking).filter(
         Booking.appointment_type_id == type_id,
         Booking.status == "confirmed",
         Booking.start_datetime < end_dt,
         Booking.end_datetime > start_dt,
-    ).first()
-    if conflict:
+    ).count()
+    if overlap_count >= appt_type.max_concurrent:
         return templates.TemplateResponse("booking/error_partial.html", {
             "request": request,
             "message": "That time slot was just booked. Please go back and choose another.",
@@ -608,7 +608,15 @@ async def submit_booking(
             pass  # Booking saved; calendar failure is non-fatal
 
         # Drive time block events (owner-only, non-fatal)
-        if appt_type.requires_drive_time and appt_type.location:
+        # Skip if this is a group showing — owner is already at the location.
+        is_group_showing = appt_type.max_concurrent > 1 and db.query(Booking).filter(
+            Booking.appointment_type_id == appt_type.id,
+            Booking.status == "confirmed",
+            Booking.id != booking.id,
+            Booking.start_datetime < booking.end_datetime,
+            Booking.end_datetime > booking.start_datetime,
+        ).first() is not None
+        if appt_type.requires_drive_time and appt_type.location and not is_group_showing:
             home_address = get_setting(db, "home_address", "")
             dt_ids = _create_drive_time_blocks(
                 cal=cal,

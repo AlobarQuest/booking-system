@@ -34,6 +34,7 @@ class AppointmentType(Base):
     _rental_requirements: Mapped[str] = mapped_column("rental_requirements", Text, default="[]")
     owner_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     admin_initiated: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_concurrent: Mapped[int] = mapped_column(Integer, default=1)
     bookings: Mapped[list["Booking"]] = relationship(back_populates="appointment_type")
 
     @property
