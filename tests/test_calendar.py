@@ -184,6 +184,30 @@ def test_get_events_for_day_missing_location_returns_empty_string():
     assert events[0]["location"] == ""
 
 
+def test_get_events_for_day_converts_offset_times_to_utc():
+    service = make_service()
+    mock_api_result = {
+        "items": [
+            {
+                "summary": "Showing Window",
+                "start": {"dateTime": "2026-03-17T13:00:00-04:00"},
+                "end": {"dateTime": "2026-03-17T17:00:00-04:00"},
+            }
+        ]
+    }
+    with patch.object(service, "_build_service") as mock_build:
+        mock_svc = MagicMock()
+        mock_svc.events().list().execute.return_value = mock_api_result
+        mock_build.return_value = mock_svc
+        events = service.get_events_for_day(
+            "fake-token", "primary",
+            datetime(2026, 3, 17, 0, 0), datetime(2026, 3, 18, 0, 0)
+        )
+    assert len(events) == 1
+    assert events[0]["start"] == datetime(2026, 3, 17, 17, 0)
+    assert events[0]["end"] == datetime(2026, 3, 17, 21, 0)
+
+
 def test_get_events_for_day_can_include_all_day_events():
     service = make_service()
     mock_api_result = {

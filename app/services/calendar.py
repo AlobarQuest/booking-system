@@ -1,6 +1,7 @@
 import httpx
 from datetime import datetime
 from datetime import date as _date_type
+from datetime import timezone as _utc_tz
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
@@ -164,8 +165,12 @@ class CalendarService:
                 else:
                     continue  # skip all-day events
             else:
-                ev_start = datetime.fromisoformat(start_str.replace("Z", "+00:00")).replace(tzinfo=None)
-                ev_end = datetime.fromisoformat(end_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                ev_start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                ev_end = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                if getattr(ev_start, "tzinfo", None) is not None:
+                    ev_start = ev_start.astimezone(_utc_tz.utc).replace(tzinfo=None)
+                if getattr(ev_end, "tzinfo", None) is not None:
+                    ev_end = ev_end.astimezone(_utc_tz.utc).replace(tzinfo=None)
             events.append({
                 "start": ev_start,
                 "end": ev_end,
