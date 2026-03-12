@@ -60,6 +60,9 @@ def _compute_slots_for_type(
     busy_intervals = []
     window_intervals = []
     local_day_events = []
+    calendar_window_active = bool(
+        appt_type.calendar_window_enabled and (appt_type.calendar_window_title or "").strip()
+    )
 
     google_ids_for_freebusy = set()
     google_ids_for_freebusy.add(appt_type.calendar_id)
@@ -72,17 +75,25 @@ def _compute_slots_for_type(
             settings.google_redirect_uri,
         )
 
-        if appt_type.calendar_window_enabled and appt_type.calendar_window_title:
+        if calendar_window_active:
             window_cal_id = appt_type.calendar_window_calendar_id or appt_type.calendar_id
             google_ids_for_freebusy.discard(window_cal_id)
             try:
-                window_cal_events = cal.get_events_for_day(refresh_token, window_cal_id, day_start, day_end)
+                window_cal_events = cal.get_events_for_day(
+                    refresh_token,
+                    window_cal_id,
+                    day_start,
+                    day_end,
+                    include_all_day=True,
+                )
                 title_lower = appt_type.calendar_window_title.lower().strip()
                 for ev in window_cal_events:
                     local_start = ev["start"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                     local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
                     if ev["summary"].lower().strip() == title_lower:
-                        window_intervals.append((local_start.time(), local_end.time()))
+                        window_start = time_type(0, 0) if local_start.date() < target_date else local_start.time()
+                        window_end = time_type(23, 59, 59) if local_end.date() > target_date else local_end.time()
+                        window_intervals.append((window_start, window_end))
                     else:
                         busy_intervals.append((local_start, local_end))
             except Exception:
@@ -135,7 +146,7 @@ def _compute_slots_for_type(
 
     windows = _build_free_windows(target_date, rules, blocked, busy_intervals, appointment_type_id=appt_type.id)
 
-    if window_intervals:
+    if calendar_window_active:
         windows = intersect_windows(windows, window_intervals)
 
     if appt_type.requires_drive_time and effective_location:

@@ -132,10 +132,13 @@ class CalendarService:
         calendar_id: str,
         day_start: datetime,
         day_end: datetime,
+        include_all_day: bool = False,
     ) -> list[dict]:
         """Return all timed events for a day as dicts with keys: start, end, summary, location.
 
-        All datetimes are returned as naive UTC. All-day events (date-only) are excluded.
+        All datetimes are returned as naive UTC. All-day events (date-only) are excluded
+        unless include_all_day=True, in which case they are expanded to cover the full
+        requested day window.
         day_start and day_end must be naive UTC datetimes.
         """
         service = self._build_service(refresh_token)
@@ -155,9 +158,14 @@ class CalendarService:
             start_str = item["start"].get("dateTime")
             end_str = item["end"].get("dateTime")
             if not start_str or not end_str:
-                continue  # skip all-day events
-            ev_start = datetime.fromisoformat(start_str.replace("Z", "+00:00")).replace(tzinfo=None)
-            ev_end = datetime.fromisoformat(end_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                if include_all_day and item["start"].get("date") and item["end"].get("date"):
+                    ev_start = day_start
+                    ev_end = day_end
+                else:
+                    continue  # skip all-day events
+            else:
+                ev_start = datetime.fromisoformat(start_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                ev_end = datetime.fromisoformat(end_str.replace("Z", "+00:00")).replace(tzinfo=None)
             events.append({
                 "start": ev_start,
                 "end": ev_end,

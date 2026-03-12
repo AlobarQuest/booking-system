@@ -1,5 +1,5 @@
-from unittest.mock import patch
-from datetime import datetime, time, timezone as dt_timezone
+from unittest.mock import patch, MagicMock
+from datetime import datetime, date as date_type, time, timezone as dt_timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 from app.database import Base, get_db
 from app.main import app
 from app.models import AppointmentType, AvailabilityRule
+from app.dependencies import set_setting
+from app.routers.slots import _compute_slots_for_type
 
 
 def setup_db():
@@ -121,8 +123,6 @@ def test_slots_applies_drive_time_when_enabled(client):
 
 def test_slots_calendar_window_filters_slots(client):
     """When calendar_window_enabled=True and no matching events, return no slots."""
-    from unittest.mock import patch
-    from app.models import AppointmentType, AvailabilityRule
     from app.database import get_db
 
     db = next(client.app.dependency_overrides[get_db]())
@@ -136,16 +136,126 @@ def test_slots_calendar_window_filters_slots(client):
         buffer_before_minutes=0, buffer_after_minutes=0,
     )
     db.add(appt)
-    from app.dependencies import set_setting
     set_setting(db, "google_refresh_token", "fake-token")
     db.commit()
 
-    with patch("app.routers.slots.CalendarService") as MockCal:
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost/callback"
+
+    with patch("app.routers.slots.CalendarService") as MockCal, \
+         patch("app.routers.slots.get_settings", return_value=mock_settings), \
+         patch("app.routers.slots.datetime") as mock_dt:
         MockCal.return_value.get_events_for_day.return_value = []  # No matching events
         MockCal.return_value.get_busy_intervals.return_value = []
-        resp = client.get(f"/slots?type_id={appt.id}&date=2025-03-03")
+        mock_dt.now.return_value = datetime(2030, 9, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
+        mock_dt.combine = datetime.combine
+        resp = client.get(f"/slots?type_id={appt.id}&date=2030-09-16")
     assert resp.status_code == 200
     assert "no-slots" in resp.text or resp.text.count("slot") == 0
+
+
+def test_compute_slots_calendar_window_all_day_event_creates_window():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    appt = AppointmentType(
+        name="Rental Showing",
+        duration_minutes=60,
+        buffer_before_minutes=0,
+        buffer_after_minutes=0,
+        calendar_id="primary",
+        active=True,
+        color="#fff",
+        description="",
+        calendar_window_enabled=True,
+        calendar_window_title="RENTAL SHOWING RENTAL",
+    )
+    db.add(appt)
+    db.add(AvailabilityRule(day_of_week=0, start_time="09:00", end_time="17:00", active=True))
+    set_setting(db, "google_refresh_token", "fake-token")
+    set_setting(db, "timezone", "UTC")
+    db.commit()
+
+    target_date = date_type(2030, 9, 16)
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost/callback"
+
+    with patch("app.routers.slots.get_settings", return_value=mock_settings), \
+         patch("app.routers.slots.CalendarService") as MockCal, \
+         patch("app.routers.slots.datetime") as mock_dt:
+        MockCal.return_value.get_events_for_day.return_value = [
+            {
+                "start": datetime(2030, 9, 16, 0, 0, 0),
+                "end": datetime(2030, 9, 17, 0, 0, 0),
+                "summary": "RENTAL SHOWING RENTAL",
+                "location": "",
+            }
+        ]
+        MockCal.return_value.get_busy_intervals.return_value = []
+        mock_dt.now.return_value = datetime(2030, 9, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
+        mock_dt.combine = datetime.combine
+        slots = _compute_slots_for_type(appt, target_date, db)
+
+    assert any(slot["display"] == "9:00 AM" for slot in slots)
+    assert any(slot["display"] == "4:00 PM" for slot in slots)
+    db.close()
+
+
+def test_compute_slots_calendar_window_without_match_returns_no_slots():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    appt = AppointmentType(
+        name="Rental Showing",
+        duration_minutes=60,
+        buffer_before_minutes=0,
+        buffer_after_minutes=0,
+        calendar_id="primary",
+        active=True,
+        color="#fff",
+        description="",
+        calendar_window_enabled=True,
+        calendar_window_title="RENTAL SHOWING RENTAL",
+    )
+    db.add(appt)
+    db.add(AvailabilityRule(day_of_week=0, start_time="09:00", end_time="17:00", active=True))
+    set_setting(db, "google_refresh_token", "fake-token")
+    set_setting(db, "timezone", "UTC")
+    db.commit()
+
+    target_date = date_type(2030, 9, 16)
+    mock_settings = MagicMock()
+    mock_settings.google_client_id = "fake-id"
+    mock_settings.google_client_secret = "fake-secret"
+    mock_settings.google_redirect_uri = "http://localhost/callback"
+
+    with patch("app.routers.slots.get_settings", return_value=mock_settings), \
+         patch("app.routers.slots.CalendarService") as MockCal, \
+         patch("app.routers.slots.datetime") as mock_dt:
+        MockCal.return_value.get_events_for_day.return_value = []
+        MockCal.return_value.get_busy_intervals.return_value = []
+        mock_dt.now.return_value = datetime(2030, 9, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
+        mock_dt.combine = datetime.combine
+        slots = _compute_slots_for_type(appt, target_date, db)
+
+    assert slots == []
+    db.close()
 
 
 def test_slots_uses_destination_for_admin_initiated_type():

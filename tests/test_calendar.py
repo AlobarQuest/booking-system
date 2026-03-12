@@ -184,6 +184,34 @@ def test_get_events_for_day_missing_location_returns_empty_string():
     assert events[0]["location"] == ""
 
 
+def test_get_events_for_day_can_include_all_day_events():
+    service = make_service()
+    mock_api_result = {
+        "items": [
+            {
+                "summary": "All Day Showing Window",
+                "start": {"date": "2025-03-03"},
+                "end": {"date": "2025-03-04"},
+            }
+        ]
+    }
+    with patch.object(service, "_build_service") as mock_build:
+        mock_svc = MagicMock()
+        mock_svc.events().list().execute.return_value = mock_api_result
+        mock_build.return_value = mock_svc
+        events = service.get_events_for_day(
+            "fake-token",
+            "primary",
+            datetime(2025, 3, 3, 5, 0),
+            datetime(2025, 3, 4, 5, 0),
+            include_all_day=True,
+        )
+    assert len(events) == 1
+    assert events[0]["summary"] == "All Day Showing Window"
+    assert events[0]["start"] == datetime(2025, 3, 3, 5, 0)
+    assert events[0]["end"] == datetime(2025, 3, 4, 5, 0)
+
+
 def test_fetch_webcal_events_returns_location():
     """fetch_webcal_events must return the location field from ICS events."""
     from unittest.mock import patch, MagicMock
