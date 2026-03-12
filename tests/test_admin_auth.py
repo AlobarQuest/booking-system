@@ -1,4 +1,6 @@
 import bcrypt
+import unittest
+from types import SimpleNamespace
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -7,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.database import Base, get_db
 from app.main import app
 from app.models import Setting
+from app.routers.admin import google_authorize, google_callback
 
 
 def make_authed_client():
@@ -99,3 +102,47 @@ def test_logout_clears_session():
     assert response.status_code == 302
     assert "login" in response.headers["location"]
     app.dependency_overrides.clear()
+
+
+def test_google_authorize_stores_state_and_code_verifier_in_session():
+    request = SimpleNamespace(session={})
+    with unittest.mock.patch("app.routers.admin.get_settings") as mock_settings, \
+         unittest.mock.patch("app.routers.admin.CalendarService") as MockCalendarService:
+        mock_settings.return_value.google_client_id = "cid"
+        mock_settings.return_value.google_client_secret = "secret"
+        mock_settings.return_value.google_redirect_uri = "https://example.com/callback"
+        MockCalendarService.return_value.get_auth_url.return_value = (
+            "https://accounts.google.com/o/oauth2/auth?x=1",
+            "state-123",
+            "verifier-123",
+        )
+        response = google_authorize(request, _=True)
+    assert request.session["oauth_state"] == "state-123"
+    assert request.session["oauth_code_verifier"] == "verifier-123"
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://accounts.google.com/o/oauth2/auth?x=1"
+
+
+def test_google_callback_passes_stored_code_verifier_to_exchange():
+    request = SimpleNamespace(
+        session={"oauth_state": "state-123", "oauth_code_verifier": "verifier-123"},
+        query_params={"state": "state-123"},
+    )
+    db = unittest.mock.MagicMock()
+    with unittest.mock.patch("app.routers.admin.get_settings") as mock_settings, \
+         unittest.mock.patch("app.routers.admin.CalendarService") as MockCalendarService, \
+         unittest.mock.patch("app.routers.admin.set_setting") as mock_set_setting:
+        mock_settings.return_value.google_client_id = "cid"
+        mock_settings.return_value.google_client_secret = "secret"
+        mock_settings.return_value.google_redirect_uri = "https://example.com/callback"
+        MockCalendarService.return_value.exchange_code.return_value = "refresh-token"
+        response = google_callback(request, code="auth-code", db=db, _=True)
+    MockCalendarService.return_value.exchange_code.assert_called_once_with(
+        "auth-code",
+        code_verifier="verifier-123",
+    )
+    mock_set_setting.assert_called_once_with(db, "google_refresh_token", "refresh-token")
+    assert "oauth_state" not in request.session
+    assert "oauth_code_verifier" not in request.session
+    assert response.status_code == 302
+    assert response.headers["location"] == "/admin/settings"

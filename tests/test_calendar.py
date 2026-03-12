@@ -11,21 +11,36 @@ def test_get_auth_url_returns_google_url():
     service = make_service()
     mock_flow = MagicMock()
     mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?...", "state")
+    mock_flow.code_verifier = "verifier-123"
     with patch.object(service, "_make_flow", return_value=mock_flow):
-        url, state = service.get_auth_url()
+        url, state, code_verifier = service.get_auth_url()
     assert url == "https://accounts.google.com/o/oauth2/auth?..."
     assert state == "state"
+    assert code_verifier == "verifier-123"
 
 
 def test_get_auth_url_returns_state():
-    """get_auth_url must return a (url, state) tuple so callers can store the state."""
+    """get_auth_url must return a (url, state, verifier) tuple so callers can store PKCE data."""
     service = make_service()
     mock_flow = MagicMock()
     mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?...", "random-state")
+    mock_flow.code_verifier = "random-verifier"
     with patch.object(service, "_make_flow", return_value=mock_flow):
-        url, state = service.get_auth_url()
+        url, state, code_verifier = service.get_auth_url()
     assert url.startswith("https://")
     assert state == "random-state"
+    assert code_verifier == "random-verifier"
+
+
+def test_exchange_code_passes_code_verifier_to_flow():
+    service = make_service()
+    mock_flow = MagicMock()
+    mock_flow.credentials.refresh_token = "refresh-token"
+    with patch.object(service, "_make_flow", return_value=mock_flow) as mock_make_flow:
+        token = service.exchange_code("auth-code", code_verifier="verifier-xyz")
+    mock_make_flow.assert_called_once_with(code_verifier="verifier-xyz")
+    mock_flow.fetch_token.assert_called_once_with(code="auth-code")
+    assert token == "refresh-token"
 
 
 def test_is_authorized_false_without_token():

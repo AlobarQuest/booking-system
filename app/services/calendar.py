@@ -18,7 +18,7 @@ class CalendarService:
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
 
-    def _make_flow(self) -> Flow:
+    def _make_flow(self, code_verifier: str | None = None) -> Flow:
         return Flow.from_client_config(
             {
                 "web": {
@@ -31,17 +31,19 @@ class CalendarService:
             },
             scopes=SCOPES,
             redirect_uri=self.redirect_uri,
+            code_verifier=code_verifier,
+            autogenerate_code_verifier=code_verifier is None,
         )
 
-    def get_auth_url(self) -> tuple[str, str]:
-        """Return (auth_url, state) tuple. Caller must store state in session."""
+    def get_auth_url(self) -> tuple[str, str, str]:
+        """Return (auth_url, state, code_verifier) tuple. Caller must store state/verifier in session."""
         flow = self._make_flow()
         auth_url, state = flow.authorization_url(access_type="offline", prompt="consent")
-        return auth_url, state
+        return auth_url, state, flow.code_verifier or ""
 
-    def exchange_code(self, code: str) -> str:
+    def exchange_code(self, code: str, code_verifier: str = "") -> str:
         """Exchange OAuth code for refresh token. Returns the refresh token."""
-        flow = self._make_flow()
+        flow = self._make_flow(code_verifier=code_verifier or None)
         flow.fetch_token(code=code)
         token = flow.credentials.refresh_token
         if not token:

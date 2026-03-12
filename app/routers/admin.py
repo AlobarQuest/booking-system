@@ -705,8 +705,9 @@ def google_authorize(request: Request, _=AuthDep):
         settings.google_client_secret,
         settings.google_redirect_uri,
     )
-    url, state = cal.get_auth_url()
+    url, state, code_verifier = cal.get_auth_url()
     request.session["oauth_state"] = state
+    request.session["oauth_code_verifier"] = code_verifier
     return RedirectResponse(url, status_code=302)
 
 
@@ -716,6 +717,7 @@ def google_callback(
 ):
     received_state = request.query_params.get("state", "")
     expected_state = request.session.pop("oauth_state", "")
+    code_verifier = request.session.pop("oauth_code_verifier", "")
     if not expected_state or received_state != expected_state:
         _flash(request, "OAuth state mismatch — possible CSRF. Please try again.", "error")
         return RedirectResponse("/admin/settings", status_code=302)
@@ -726,7 +728,7 @@ def google_callback(
         settings.google_redirect_uri,
     )
     try:
-        refresh_token = cal.exchange_code(code)
+        refresh_token = cal.exchange_code(code, code_verifier=code_verifier)
         set_setting(db, "google_refresh_token", refresh_token)
         _flash(request, "Google Calendar connected successfully.")
     except Exception as e:
