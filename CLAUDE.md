@@ -57,7 +57,7 @@ A personal appointment booking system built with FastAPI + SQLite. It provides a
 | `app/routers/booking.py` | GET/POST /book — public booking flow |
 | `app/routers/admin.py` | All /admin/* routes |
 | `app/services/availability.py` | `compute_slots()`, `_build_free_windows()`, `intersect_windows()`, `trim_windows_for_drive_time()`, `filter_by_advance_notice()` |
-| `app/services/calendar.py` | `CalendarService` — Google Calendar API wrapper; `fetch_webcal_busy()` |
+| `app/services/calendar.py` | `CalendarService` — Google OAuth PKCE flow, Google Calendar API wrapper, event normalization helpers, `fetch_webcal_busy()` |
 | `app/services/drive_time.py` | `get_drive_time()` — Google Maps Distance Matrix API + DriveTimeCache |
 | `app/services/booking.py` | `create_booking()` |
 | `app/services/email.py` | Email via Resend |
@@ -99,6 +99,8 @@ New columns added here **must also** be added as `mapped_column` fields in `app/
 
 Both redirect URIs must also be registered in Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 client → Authorized redirect URIs.
 
+Google requires an exact host/path match for OAuth redirect URIs. `https://preview.booking.devonwatkins.com/admin/google/callback` must be registered exactly for preview Google reconnect to work.
+
 ---
 
 ## What Has Been Built (history)
@@ -117,6 +119,7 @@ Both redirect URIs must also be registered in Google Cloud Console → APIs & Se
 - **Security remediation** — CSRF tokens on all POST forms (`require_csrf` dependency + session-backed `_csrf` hidden field); rate-limited admin login/setup (5/min); security response headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy); HTML-escaped guest data in emails; `javascript:` / non-HTTP URL scheme rejection on listing/rental URLs; OAuth state parameter validation
 - **Mobile booking UI** — responsive card layout: photo stacks above text on mobile (`flex-direction: column-reverse`); reduced header padding; full-width date picker on mobile
 - **Drive time block events** — when a booking is confirmed for an appointment type with `requires_drive_time=True`, creates "BLOCK - Drive Time for …" calendar events on the owner's calendar: one before the appointment (from preceding event location or `home_address` setting) and one after (to the next event's location), each within a ±1-hour window; implemented in `_create_drive_time_blocks()` in `app/routers/booking.py`
+- **Google Calendar reliability fixes (March 12, 2026)** — reconnect now persists the OAuth PKCE code verifier across `/admin/google/authorize` → `/admin/google/callback`; calendar-window mode now fails closed when enabled but no matching events exist, supports matching all-day events, and normalizes offset-aware `events.list()` timestamps to UTC before local conversion so local booking windows do not shift earlier or later
 
 ---
 

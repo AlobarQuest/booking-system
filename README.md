@@ -8,11 +8,11 @@ Personal appointment booking system with a public booking interface and admin pa
 
 - Public booking page with HTMX-powered slot picker
 - Admin panel: appointment types, availability rules, booking management
-- Google Calendar integration (conflict detection + event creation)
+- Google Calendar integration (conflict detection, event creation, OAuth reconnect)
 - Webcal/ICS feed support for multi-calendar conflict checking
 - Drive time buffers via Google Maps Distance Matrix API
 - Drive time block events on owner's calendar (automatic "BLOCK" events before/after appointments)
-- Calendar-window availability mode (restrict slots to specific calendar events)
+- Calendar-window availability mode (restrict slots to exact-title Google calendar events, including all-day events)
 - Email notifications via Resend (confirmation to guest, alert to owner)
 - Editable email templates in admin panel
 - Photo upload, listing URL, and rental requirements per appointment type
@@ -67,8 +67,20 @@ Hosted on a Hetzner CX22 VPS using [Coolify](https://coolify.io) (self-hosted Pa
 2. Enable the **Google Calendar API**
 3. Create OAuth 2.0 credentials (Web application type)
    - Authorized redirect URI: `https://booking.devonwatkins.com/admin/google/callback`
+   - Authorized redirect URI: `https://preview.booking.devonwatkins.com/admin/google/callback`
 4. Copy Client ID and Client Secret into your environment variables
 5. In admin panel → Settings → Connect Google Calendar
+
+Google requires an exact redirect URI match. `preview.booking.devonwatkins.com` and `preview.devonwatkins.com` are different hosts and are not interchangeable.
+
+## Google Calendar Availability Notes
+
+- Standard slot calculation subtracts Google busy time from the appointment type's booking calendar plus any configured conflict calendars.
+- Calendar-window mode treats matching Google events as allowed booking windows instead of conflicts. Title matching is exact and case-insensitive.
+- When calendar-window mode is enabled and no matching event exists on a day, that day returns no slots.
+- Matching all-day Google events count as full-day booking windows for the requested date.
+- Timed `events.list()` responses with offsets such as `-04:00` are normalized to UTC before local conversion so booking windows stay aligned to the correct local hour.
+- If slots stop respecting Google conflicts, re-authorize Google from `/admin/settings` to refresh the stored token.
 
 ## Resend Email Setup
 
