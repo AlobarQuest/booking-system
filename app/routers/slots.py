@@ -165,6 +165,8 @@ def _compute_slots_for_type(
     )
     if not skip_advance_notice:
         slots = filter_by_advance_notice(slots, target_date, min_advance, now_local)
+    else:
+        slots = filter_by_advance_notice(slots, target_date, 0, now_local)
 
     # Group showings: inject same-type booking start times back as candidates,
     # then post-filter by concurrent count.

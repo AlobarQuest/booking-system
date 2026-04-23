@@ -211,8 +211,13 @@ def test_admin_reschedule_slots_bypass_advance_notice():
     db.commit()
     db.close()
 
-    # 2025-09-15 is a Monday
-    response = client.get(f"/admin/bookings/{booking_id}/reschedule/slots?date=2025-09-15")
+    # Find the next Monday at least 1 day from today so the 0h past-filter doesn't remove all slots
+    from datetime import date, timedelta
+    today = date.today()
+    days_ahead = (0 - today.weekday()) % 7 or 7
+    next_monday = (today + timedelta(days=days_ahead)).isoformat()
+
+    response = client.get(f"/admin/bookings/{booking_id}/reschedule/slots?date={next_monday}")
     assert response.status_code == 200
     # Should have slot buttons, not just "no available times"
     assert "slot-btn" in response.text
