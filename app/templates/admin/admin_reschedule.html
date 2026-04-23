@@ -22,7 +22,6 @@
       hx-swap="innerHTML"
       hx-trigger="change[this.value !== '']"
       hx-sync="this:replace"
-      hx-on::after-swap="document.getElementById('custom-time-section').style.display='block';document.getElementById('custom-time').value='';"
       name="date">
   </label>
   <div id="slot-area" style="margin-top:1rem;"></div>
@@ -49,6 +48,12 @@
 </div>
 
 <script>
+document.getElementById('reschedule-date').addEventListener('change', function() {
+  if (this.value) {
+    document.getElementById('custom-time-section').style.display = 'block';
+    document.getElementById('custom-time').value = '';
+  }
+});
 function selectRescheduleSlot(value, display) {
   var date = document.getElementById('reschedule-date').value;
   document.getElementById('confirm-datetime').value = date + 'T' + value + ':00';
