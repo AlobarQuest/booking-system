@@ -22,9 +22,19 @@
       hx-swap="innerHTML"
       hx-trigger="change[this.value !== '']"
       hx-sync="this:replace"
+      hx-on::after-swap="document.getElementById('custom-time-section').style.display='block';document.getElementById('custom-time').value='';"
       name="date">
   </label>
   <div id="slot-area" style="margin-top:1rem;"></div>
+
+  <div id="custom-time-section" style="display:none;margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0;">
+    <p style="font-size:.85rem;color:#64748b;margin-bottom:.5rem;">Force a specific time (overrides availability rules):</p>
+    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+      <input type="time" id="custom-time" style="padding:.4rem .6rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.9rem;">
+      <button type="button" class="btn btn-secondary" style="font-size:.875rem;" onclick="applyCustomTime()">Use This Time</button>
+    </div>
+  </div>
+
   <div id="confirmation-section" style="display:none;margin-top:1rem;">
     <p id="confirm-summary" style="color:#059669;font-weight:600;margin-bottom:.75rem;"></p>
     <form method="post" action="/admin/bookings/{{ booking.id }}/reschedule">
@@ -50,6 +60,17 @@ function selectRescheduleSlot(value, display) {
 function cancelRescheduleSelection() {
   document.getElementById('confirmation-section').style.display = 'none';
   document.querySelectorAll('#slot-area .slot-btn').forEach(function(b) { b.classList.remove('selected'); });
+}
+function applyCustomTime() {
+  var time = document.getElementById('custom-time').value;
+  var date = document.getElementById('reschedule-date').value;
+  if (!time || !date) return;
+  var parts = time.split(':');
+  var h = parseInt(parts[0]), m = parseInt(parts[1]);
+  var ampm = h >= 12 ? 'PM' : 'AM';
+  var h12 = h % 12 || 12;
+  var display = h12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+  selectRescheduleSlot(time, display);
 }
 </script>
 {% endblock %}
