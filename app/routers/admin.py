@@ -490,10 +490,12 @@ def admin_reschedule_slots(
     booking = db.query(Booking).filter_by(id=booking_id, status="confirmed").first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found.")
+    if not date:
+        return HTMLResponse("")
     try:
         target_date = date_type.fromisoformat(date)
     except ValueError:
-        return HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
+        return HTMLResponse("")
     slot_data = _compute_slots_for_type(
         booking.appointment_type, target_date, db,
         destination=booking.location, skip_advance_notice=True,
