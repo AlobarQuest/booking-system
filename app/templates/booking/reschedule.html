@@ -29,7 +29,7 @@
     hx-get="/reschedule/{{ token }}/slots"
     hx-target="#slot-area"
     hx-swap="innerHTML"
-    hx-trigger="change[this.value]"
+    hx-trigger="change[this.value !== '']"
     hx-sync="this:replace"
     name="date">
 </div>

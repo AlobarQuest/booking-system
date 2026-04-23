@@ -20,7 +20,7 @@
       hx-get="/admin/bookings/{{ booking.id }}/reschedule/slots"
       hx-target="#slot-area"
       hx-swap="innerHTML"
-      hx-trigger="change[this.value]"
+      hx-trigger="change[this.value !== '']"
       hx-sync="this:replace"
       name="date">
   </label>
