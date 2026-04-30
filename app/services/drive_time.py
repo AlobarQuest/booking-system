@@ -6,6 +6,7 @@ from app.config import get_settings
 
 MAPS_DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
 CACHE_TTL_DAYS = 30
+DEFAULT_DRIVE_TIME_MINUTES = 30
 
 
 def get_drive_time(origin: str, destination: str, db) -> int:
@@ -13,7 +14,8 @@ def get_drive_time(origin: str, destination: str, db) -> int:
 
     Checks DriveTimeCache first. Calls Google Maps Distance Matrix API if
     the cache entry is missing or older than 30 days. Returns 0 if the API
-    key is not configured or the request fails.
+    key is not configured. Returns DEFAULT_DRIVE_TIME_MINUTES if the API
+    call fails or returns a non-OK status.
     """
     from app.models import DriveTimeCache
 
@@ -47,11 +49,11 @@ def get_drive_time(origin: str, destination: str, db) -> int:
         data = resp.json()
         element = data["rows"][0]["elements"][0]
         if element["status"] != "OK":
-            return 0
+            return DEFAULT_DRIVE_TIME_MINUTES
         duration_seconds = element["duration"]["value"]
         drive_minutes = (duration_seconds + 59) // 60  # round up to nearest minute
     except Exception:
-        return 0
+        return DEFAULT_DRIVE_TIME_MINUTES
 
     # Upsert cache
     if cache_entry:

@@ -60,14 +60,14 @@ def test_get_drive_time_uses_cache_on_second_call():
     assert mock_get.call_count == 1  # Only called once; second call used cache
 
 
-def test_get_drive_time_returns_zero_on_maps_api_failure():
-    from app.services.drive_time import get_drive_time
+def test_get_drive_time_returns_default_on_maps_api_failure():
+    from app.services.drive_time import get_drive_time, DEFAULT_DRIVE_TIME_MINUTES
     db = make_db()
     with patch("app.services.drive_time.get_settings") as mock_settings, \
          patch("app.services.drive_time.httpx.get", side_effect=Exception("network error")):
         mock_settings.return_value.google_maps_api_key = "fake-key"
         result = get_drive_time("123 Main St", "456 Oak Ave", db)
-    assert result == 0
+    assert result == DEFAULT_DRIVE_TIME_MINUTES
 
 
 def test_get_drive_time_refreshes_stale_cache():
