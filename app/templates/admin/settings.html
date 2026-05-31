@@ -42,20 +42,6 @@
   </form>
 </div>
 
-<div class="card" style="cursor:default;max-width:520px;margin-bottom:2rem;">
-  <h2 style="margin-bottom:1rem;">Change Admin Password</h2>
-  <form method="post" action="/admin/settings/password">
-    <input type="hidden" name="_csrf" value="{{ csrf_token(request) }}">
-    <label>New Password
-      <input type="password" name="password" minlength="8" required>
-    </label>
-    <label>Confirm
-      <input type="password" name="confirm" required>
-    </label>
-    <button type="submit" class="btn btn-secondary">Change Password</button>
-  </form>
-</div>
-
 <div class="card" style="cursor:default;max-width:520px;">
   <h2 style="margin-bottom:.75rem;">Google Calendar</h2>
   {% if google_authorized %}

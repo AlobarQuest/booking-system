@@ -47,7 +47,7 @@ app.include_router(admin.router)
 
 @app.exception_handler(AdminNotAuthenticated)
 async def admin_not_authenticated_handler(request, exc):
-    return RedirectResponse(url="/admin/login", status_code=302)
+    return RedirectResponse(url="/login", status_code=302)
 
 
 @app.get("/health")

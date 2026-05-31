@@ -1,107 +1,40 @@
-import bcrypt
 import unittest
 from types import SimpleNamespace
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.database import Base, get_db
-from app.main import app
-from app.models import Setting
 from app.routers.admin import google_authorize, google_callback
 
 
-def make_authed_client():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    db = Session()
-    hashed = bcrypt.hashpw(b"testpass123", bcrypt.gensalt()).decode()
-    db.add(Setting(key="admin_password_hash", value=hashed))
-    db.commit()
-    db.close()
-
-    def override():
-        s = Session()
-        try:
-            yield s
-        finally:
-            s.close()
-
-    app.dependency_overrides[get_db] = override
-    return TestClient(app, raise_server_exceptions=True)
-
-
-def test_login_page_loads(client):
-    response = client.get("/admin/login")
-    assert response.status_code == 200
-    assert "password" in response.text.lower()
-
-
-def test_login_redirects_to_setup_when_no_password(client):
-    response = client.get("/admin/setup", follow_redirects=False)
-    # No password set in test fixture — setup page should show
-    assert response.status_code in (200, 302)
-
-
-def test_login_with_wrong_password():
-    import re
-    c = make_authed_client()
-    get_resp = c.get("/admin/login")
-    match = re.search(r'name="_csrf" value="([^"]+)"', get_resp.text)
-    csrf = match.group(1) if match else ""
-    response = c.post("/admin/login", data={"password": "wrongpass", "_csrf": csrf}, follow_redirects=False)
-    assert response.status_code in (200, 401)
-    app.dependency_overrides.clear()
-
-
-def test_login_with_correct_password_redirects():
-    import re
-    c = make_authed_client()
-    get_resp = c.get("/admin/login")
-    match = re.search(r'name="_csrf" value="([^"]+)"', get_resp.text)
-    csrf = match.group(1) if match else ""
-    response = c.post("/admin/login", data={"password": "testpass123", "_csrf": csrf}, follow_redirects=False)
+def test_unauthenticated_admin_redirects_to_login(client):
+    response = client.get("/admin/", follow_redirects=False)
     assert response.status_code == 302
-    assert "/admin" in response.headers["location"]
-    app.dependency_overrides.clear()
+    assert response.headers["location"] == "/login"
 
 
-def test_login_post_rejects_missing_csrf(client):
-    resp = client.post("/admin/login", data={"password": "anything"})
-    assert resp.status_code == 403
+def test_login_initiates_oidc_redirect(client):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 302
+    mock_resp.headers = {"location": "https://id.alobar.net/application/o/authorize/?foo=1"}
+    mock_resp.body = b""
+    mock_resp.background = None
+
+    with patch("app.routers.auth.oauth.authentik.authorize_redirect", new_callable=AsyncMock) as mock_redir:
+        mock_redir.return_value = mock_resp
+        response = client.get("/login", follow_redirects=False)
+
+    mock_redir.assert_called_once()
+    redirect_uri_arg = mock_redir.call_args[0][1]
+    assert "/auth/callback" in redirect_uri_arg
 
 
-def test_login_post_accepts_valid_csrf(client):
-    # GET the page first to establish session and get CSRF token
-    get_resp = client.get("/admin/login")
-    assert get_resp.status_code == 200
-    # Extract CSRF token from the response HTML
-    import re
-    match = re.search(r'name="_csrf" value="([^"]+)"', get_resp.text)
-    assert match, "CSRF token not found in login form"
-    csrf_token = match.group(1)
-    resp = client.post("/admin/login", data={"password": "wrongpassword", "_csrf": csrf_token})
-    # Should reach the handler (password wrong, but not 403)
-    assert resp.status_code in (200, 401)
-
-
-def test_logout_clears_session():
-    import re
-    c = make_authed_client()
-    get_resp = c.get("/admin/login")
-    match = re.search(r'name="_csrf" value="([^"]+)"', get_resp.text)
-    csrf = match.group(1) if match else ""
-    c.post("/admin/login", data={"password": "testpass123", "_csrf": csrf})
-    response = c.get("/admin/logout", follow_redirects=False)
+def test_logout_redirects_to_authentik_end_session(client):
+    with patch("app.routers.auth._settings") as mock_settings:
+        mock_settings.alobar_id_issuer = "https://id.alobar.net/application/o/booking-assistant/"
+        response = client.get("/admin/logout", follow_redirects=False)
     assert response.status_code == 302
-    assert "login" in response.headers["location"]
-    app.dependency_overrides.clear()
+    location = response.headers["location"]
+    assert "id.alobar.net" in location
+    assert "end-session" in location
 
 
 def test_google_authorize_stores_state_and_code_verifier_in_session():

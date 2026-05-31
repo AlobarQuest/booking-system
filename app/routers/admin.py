@@ -1,4 +1,3 @@
-import bcrypt
 import json
 import os
 import uuid
@@ -619,23 +618,6 @@ def save_settings(
     _flash(request, "Settings saved.")
     return RedirectResponse("/admin/settings", status_code=302)
 
-
-@router.post("/settings/password")
-def change_password(
-    request: Request,
-    password: str = Form(...),
-    confirm: str = Form(...),
-    db: Session = Depends(get_db),
-    _=AuthDep,
-    _csrf_ok: None = Depends(require_csrf),
-):
-    if password != confirm:
-        _flash(request, "Passwords do not match.", "error")
-        return RedirectResponse("/admin/settings", status_code=302)
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    set_setting(db, "admin_password_hash", hashed)
-    _flash(request, "Password changed successfully.")
-    return RedirectResponse("/admin/settings", status_code=302)
 
 
 @router.post("/settings/conflict-calendars")

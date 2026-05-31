@@ -14,7 +14,7 @@ class AdminNotAuthenticated(Exception):
 
 
 def require_admin(request: Request):
-    if not request.session.get("admin_authenticated"):
+    if not request.session.get("user_sub"):
         raise AdminNotAuthenticated()
     return True
 
