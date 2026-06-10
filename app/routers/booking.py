@@ -1,222 +1,55 @@
+import logging
 import os
-from datetime import datetime, date as date_type, timedelta, timezone as dt_timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, date as date_type, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.dependencies import get_setting, require_csrf
+from app.dependencies import get_email_config, get_setting, require_csrf
 from app.limiter import limiter
 from app.models import AppointmentType, Booking
-from app.routers.slots import _compute_slots_for_type
+from app.services import email
 from app.services.booking import create_booking
-from app.services.drive_time import get_drive_time
+from app.services.calendar import build_calendar_service
+from app.services.scheduling import (
+    create_drive_time_blocks,
+    delete_booking_calendar_events,
+    perform_reschedule,
+)
+from app.services.slots import compute_slots_for_type
+from app.services.timeutils import get_timezone, local_to_utc, now_local
+from app.templating import templates
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
-from app.dependencies import get_csrf_token as _get_csrf_token
-templates.env.globals["csrf_token"] = _get_csrf_token
+
+RESCHEDULE_TOKEN_ERROR = (
+    "This link has already been used or the appointment was cancelled. "
+    "If you need to book a new appointment, use the link below."
+)
+CANCEL_TOKEN_ERROR = (
+    "This appointment has already been cancelled or this link has expired. "
+    "If you need to make changes to a current booking, please contact us."
+)
 
 
-def _create_drive_time_blocks(
-    cal,
-    refresh_token: str,
-    calendar_id: str,
-    appt_name: str,
-    appt_location: str,
-    start_utc,
-    end_utc,
-    home_address: str,
-    db,
-) -> list[str]:
-    """Create BLOCK calendar events for drive time before and after the appointment.
-
-    Returns a list of created calendar event IDs (0-2 items).
-    All datetimes must be naive UTC. Failures are fully silent — this is a
-    best-effort calendar annotation, never blocking the booking confirmation.
-    """
-    created_ids: list[str] = []
-    window_start = start_utc - timedelta(hours=1)
-    window_end = end_utc + timedelta(hours=1)
-
-    try:
-        nearby_events = cal.get_events_for_day(refresh_token, calendar_id, window_start, window_end)
-    except Exception:
-        return created_ids
-
-    # --- Before block: drive TO this appointment ---
-    preceding = None
-    for ev in nearby_events:
-        if window_start <= ev["end"] <= start_utc:
-            if preceding is None or ev["end"] > preceding["end"]:
-                preceding = ev
-
-    origin = (preceding.get("location") or "").strip() if preceding else ""
-    if not origin:
-        origin = home_address
-
-    if origin and origin.lower() != appt_location.lower():
-        drive_mins = get_drive_time(origin, appt_location, db)
-        if drive_mins > 0:
-            try:
-                event_id = cal.create_event(
-                    refresh_token=refresh_token,
-                    calendar_id=calendar_id,
-                    summary=f"BLOCK - Drive Time for {appt_name}",
-                    description="",
-                    start=start_utc - timedelta(minutes=drive_mins),
-                    end=start_utc,
-                    show_as="busy",
-                    disable_reminders=True,
-                )
-                if event_id:
-                    created_ids.append(event_id)
-            except Exception:
-                pass
-
-    # --- After block: drive FROM this appointment to the next one ---
-    following = None
-    for ev in nearby_events:
-        if end_utc <= ev["start"] <= window_end:
-            if following is None or ev["start"] < following["start"]:
-                following = ev
-
-    if following:
-        dest = (following.get("location") or "").strip()
-        if dest and dest.lower() != appt_location.lower():
-            drive_mins = get_drive_time(appt_location, dest, db)
-            if drive_mins > 0:
-                try:
-                    event_id = cal.create_event(
-                        refresh_token=refresh_token,
-                        calendar_id=calendar_id,
-                        summary=f"BLOCK - Drive Time for {following['summary']}",
-                        description="",
-                        start=end_utc,
-                        end=end_utc + timedelta(minutes=drive_mins),
-                        show_as="busy",
-                        disable_reminders=True,
-                    )
-                    if event_id:
-                        created_ids.append(event_id)
-                except Exception:
-                    pass
-
-    return created_ids
+def _booking_by_token(db: Session, token: str) -> Booking | None:
+    return db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
 
 
-def _delete_drive_time_events(cal, refresh_token: str, calendar_id: str, event_ids: list[str]) -> None:
-    """Delete stored drive time BLOCK calendar events. All failures are non-fatal."""
-    for event_id in event_ids:
-        try:
-            cal.delete_event(refresh_token, calendar_id, event_id)
-        except Exception:
-            pass
+def _token_error(request: Request, message: str):
+    return templates.TemplateResponse("booking/token_error.html", {
+        "request": request,
+        "message": message,
+    })
 
 
-def _perform_reschedule(
-    db: Session,
-    booking: Booking,
-    new_start_dt: datetime,
-    settings,
-    base_url: str,
-) -> None:
-    """Reschedule a booking to a new start time.
-
-    Operation order (guards booking integrity):
-    1. Create new calendar event — raises ValueError on failure (booking unchanged).
-    2. Delete old calendar event — non-fatal (new event already exists).
-    3. Update booking record in DB.
-    4. Send new confirmation email — non-fatal.
-    base_url: scheme + host with no trailing slash, e.g. "https://booking.devonwatkins.com"
-    """
-    from app.services.calendar import CalendarService
-
-    appt_type = booking.appointment_type
-    new_end_dt = new_start_dt + timedelta(minutes=appt_type.duration_minutes)
-
-    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
-    start_utc = new_start_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
-    end_utc = new_end_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
-
-    refresh_token = get_setting(db, "google_refresh_token", "")
-    old_event_id = booking.google_event_id
-    new_event_id = old_event_id  # preserve original if calendar branch is skipped
-
-    if refresh_token and settings.google_client_id:
-        cal = CalendarService(
-            settings.google_client_id,
-            settings.google_client_secret,
-            settings.google_redirect_uri,
-        )
-        description_lines = [
-            f"Guest: {booking.guest_name}",
-            f"Email: {booking.guest_email}",
-            f"Phone: {booking.guest_phone or 'not provided'}",
-            f"Notes: {booking.notes or 'none'}",
-            "(Rescheduled)",
-        ]
-        try:
-            new_event_id = cal.create_event(
-                refresh_token=refresh_token,
-                calendar_id=appt_type.calendar_id,
-                summary=appt_type.owner_event_title or f"{appt_type.name} — {booking.guest_name}",
-                description="\n".join(description_lines),
-                start=start_utc,
-                end=end_utc,
-                attendee_email="",
-                location=appt_type.location if not appt_type.admin_initiated else booking.location,
-                show_as=appt_type.show_as,
-                visibility=appt_type.visibility,
-                disable_reminders=not appt_type.owner_reminders_enabled,
-            )
-        except Exception as exc:
-            raise ValueError(f"Could not create a new calendar event: {exc}") from exc
-
-        # Delete old event after new one is confirmed (non-fatal)
-        if old_event_id:
-            try:
-                cal.delete_event(refresh_token, appt_type.calendar_id, old_event_id)
-            except Exception:
-                pass
-
-    # Update booking
-    booking.start_datetime = new_start_dt
-    booking.end_datetime = new_end_dt
-    booking.google_event_id = new_event_id
-    db.commit()
-
-    # Send new confirmation email (non-fatal; only if guest email present)
-    if booking.guest_email:
-        notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
-        resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)
-        from_email = get_setting(db, "from_email", settings.from_email)
-        if notify_enabled and resend_api_key:
-            from app.services.email import send_guest_confirmation
-            reschedule_url = base_url + f"/reschedule/{booking.reschedule_token}"
-            cancel_url = base_url + f"/cancel/{booking.reschedule_token}"
-            try:
-                send_guest_confirmation(
-                    api_key=resend_api_key,
-                    from_email=from_email,
-                    guest_email=booking.guest_email,
-                    guest_name=booking.guest_name,
-                    appt_type_name=appt_type.guest_event_title or appt_type.name,
-                    start_dt=new_start_dt,
-                    end_dt=new_end_dt,
-                    custom_responses=booking.custom_field_responses,
-                    owner_name=get_setting(db, "owner_name", ""),
-                    template=get_setting(db, "email_guest_confirmation", ""),
-                    reschedule_url=reschedule_url,
-                    cancel_url=cancel_url,
-                    location=appt_type.location or "",
-                    contact_phone=get_setting(db, "contact_phone", ""),
-                )
-            except Exception:
-                pass
+def _format_booking_start(booking: Booking) -> str:
+    return booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
 
 
 @router.get("/reschedule/{token}/slots", response_class=HTMLResponse)
@@ -226,7 +59,7 @@ def reschedule_slots(
     date: str,
     db: Session = Depends(get_db),
 ):
-    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    booking = _booking_by_token(db, token)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found.")
     if not date:
@@ -236,7 +69,7 @@ def reschedule_slots(
     except ValueError:
         return HTMLResponse("")
 
-    slot_data = _compute_slots_for_type(
+    slot_data = compute_slots_for_type(
         booking.appointment_type,
         target_date,
         db,
@@ -254,33 +87,24 @@ def reschedule_page(
     token: str,
     db: Session = Depends(get_db),
 ):
-    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    booking = _booking_by_token(db, token)
     if not booking:
-        return templates.TemplateResponse("booking/token_error.html", {
-            "request": request,
-            "message": "This link has already been used or the appointment was cancelled. If you need to book a new appointment, use the link below.",
-        })
+        return _token_error(request, RESCHEDULE_TOKEN_ERROR)
 
     min_advance = int(get_setting(db, "min_advance_hours", "24"))
     max_future = int(get_setting(db, "max_future_days", "30"))
-    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
-    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-    cutoff = now_local + timedelta(hours=min_advance)
-    too_close = booking.start_datetime <= cutoff
-
-    min_date = cutoff.date().isoformat()
-    max_date = (now_local + timedelta(days=max_future)).date().isoformat()
-    current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
+    now = now_local(get_timezone(db))
+    cutoff = now + timedelta(hours=min_advance)
 
     return templates.TemplateResponse("booking/reschedule.html", {
         "request": request,
         "booking": booking,
         "token": token,
-        "too_close": too_close,
+        "too_close": booking.start_datetime <= cutoff,
         "min_advance_hours": min_advance,
-        "min_date": min_date,
-        "max_date": max_date,
-        "current_display": current_display,
+        "min_date": cutoff.date().isoformat(),
+        "max_date": (now + timedelta(days=max_future)).date().isoformat(),
+        "current_display": _format_booking_start(booking),
     })
 
 
@@ -295,57 +119,48 @@ async def submit_reschedule(
     form_data = await request.form()
     start_datetime_str = str(form_data.get("start_datetime", "")).strip()
 
-    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    booking = _booking_by_token(db, token)
     if not booking:
-        return templates.TemplateResponse("booking/token_error.html", {
-            "request": request,
-            "message": "This link has already been used or the appointment was cancelled. If you need to book a new appointment, use the link below.",
-        })
+        return _token_error(request, RESCHEDULE_TOKEN_ERROR)
+
+    def _reschedule_form(**overrides):
+        context = {
+            "request": request, "booking": booking, "token": token,
+            "too_close": False, "min_advance_hours": 24,
+            "min_date": "", "max_date": "",
+            "current_display": _format_booking_start(booking),
+        }
+        context.update(overrides)
+        return templates.TemplateResponse("booking/reschedule.html", context)
 
     try:
         new_start_dt = datetime.fromisoformat(start_datetime_str)
     except (ValueError, TypeError):
-        return templates.TemplateResponse("booking/reschedule.html", {
-            "request": request, "booking": booking, "token": token,
-            "too_close": False, "min_advance_hours": 24,
-            "min_date": "", "max_date": "",
-            "current_display": booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p"),
-            "error": "Invalid date/time. Please try again.",
-        })
+        return _reschedule_form(error="Invalid date/time. Please try again.")
 
     min_advance = int(get_setting(db, "min_advance_hours", "24"))
     max_future = int(get_setting(db, "max_future_days", "30"))
-    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
-    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-    cutoff = now_local + timedelta(hours=min_advance)
+    now = now_local(get_timezone(db))
+    cutoff = now + timedelta(hours=min_advance)
+    window_context = {
+        "min_advance_hours": min_advance,
+        "min_date": cutoff.date().isoformat(),
+        "max_date": (now + timedelta(days=max_future)).date().isoformat(),
+    }
     if new_start_dt <= cutoff:
-        return templates.TemplateResponse("booking/reschedule.html", {
-            "request": request, "booking": booking, "token": token,
-            "too_close": True, "min_advance_hours": min_advance,
-            "min_date": cutoff.date().isoformat(),
-            "max_date": (now_local + timedelta(days=max_future)).date().isoformat(),
-            "current_display": booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p"),
-        })
+        return _reschedule_form(too_close=True, **window_context)
 
     settings = get_settings()
     base_url = str(request.base_url).rstrip('/')
     try:
-        _perform_reschedule(db, booking, new_start_dt, settings, base_url)
+        perform_reschedule(db, booking, new_start_dt, settings, base_url)
     except ValueError as exc:
-        return templates.TemplateResponse("booking/reschedule.html", {
-            "request": request, "booking": booking, "token": token,
-            "too_close": False, "min_advance_hours": min_advance,
-            "min_date": cutoff.date().isoformat(),
-            "max_date": (now_local + timedelta(days=max_future)).date().isoformat(),
-            "current_display": booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p"),
-            "error": str(exc),
-        })
+        return _reschedule_form(error=str(exc), **window_context)
 
-    new_display = new_start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
     return templates.TemplateResponse("booking/reschedule_success.html", {
         "request": request,
         "booking": booking,
-        "new_display": new_display,
+        "new_display": new_start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p"),
     })
 
 
@@ -355,18 +170,14 @@ def cancel_page(
     token: str,
     db: Session = Depends(get_db),
 ):
-    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    booking = _booking_by_token(db, token)
     if not booking:
-        return templates.TemplateResponse("booking/token_error.html", {
-            "request": request,
-            "message": "This appointment has already been cancelled or this link has expired. If you need to make changes to a current booking, please contact us.",
-        })
-    current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
+        return _token_error(request, CANCEL_TOKEN_ERROR)
     return templates.TemplateResponse("booking/cancel_confirm.html", {
         "request": request,
         "booking": booking,
         "token": token,
-        "current_display": current_display,
+        "current_display": _format_booking_start(booking),
     })
 
 
@@ -378,47 +189,22 @@ async def submit_cancel(
     db: Session = Depends(get_db),
     _csrf_ok: None = Depends(require_csrf),
 ):
-    booking = db.query(Booking).filter_by(reschedule_token=token, status="confirmed").first()
+    booking = _booking_by_token(db, token)
     if not booking:
-        return templates.TemplateResponse("booking/token_error.html", {
-            "request": request,
-            "message": "This appointment has already been cancelled or this link has expired. If you need to make changes to a current booking, please contact us.",
-        })
+        return _token_error(request, CANCEL_TOKEN_ERROR)
 
     appt_type = booking.appointment_type
     settings = get_settings()
 
-    # Delete Google Calendar event (non-fatal)
-    refresh_token = get_setting(db, "google_refresh_token", "")
-    if refresh_token and settings.google_client_id:
-        cal = None
-        try:
-            from app.services.calendar import CalendarService
-            cal = CalendarService(
-                settings.google_client_id,
-                settings.google_client_secret,
-                settings.google_redirect_uri,
-            )
-        except Exception:
-            pass
-        if cal:
-            try:
-                if booking.google_event_id:
-                    cal.delete_event(refresh_token, appt_type.calendar_id, booking.google_event_id)
-            except Exception:
-                pass
-            _delete_drive_time_events(cal, refresh_token, appt_type.calendar_id, booking.drive_time_event_ids)
+    delete_booking_calendar_events(db, booking, settings)
 
     # Send cancellation email (non-fatal)
-    notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
-    resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)
-    from_email = get_setting(db, "from_email", settings.from_email)
-    if notify_enabled and resend_api_key and booking.guest_email:
+    email_config = get_email_config(db, settings)
+    if email_config.can_send and booking.guest_email:
         try:
-            from app.services.email import send_cancellation_notice
-            send_cancellation_notice(
-                api_key=resend_api_key,
-                from_email=from_email,
+            email.send_cancellation_notice(
+                api_key=email_config.api_key,
+                from_email=email_config.from_email,
                 guest_email=booking.guest_email,
                 guest_name=booking.guest_name,
                 appt_type_name=appt_type.guest_event_title or appt_type.name,
@@ -426,7 +212,7 @@ async def submit_cancel(
                 template=get_setting(db, "email_guest_cancellation", ""),
             )
         except Exception:
-            pass
+            logger.warning("Cancel: cancellation email failed", exc_info=True)
 
     booking.status = "cancelled"
     db.commit()
@@ -516,24 +302,23 @@ async def submit_booking(
     guest_phone = str(form_data.get("guest_phone", "")).strip()
     notes = str(form_data.get("notes", "")).strip()
 
-    if not all([type_id_str, start_datetime_str, guest_name, guest_email, guest_phone]):
+    def _error(message: str):
         return templates.TemplateResponse("booking/error_partial.html", {
-            "request": request, "message": "Please fill in all required fields."
+            "request": request, "message": message
         })
+
+    if not all([type_id_str, start_datetime_str, guest_name, guest_email, guest_phone]):
+        return _error("Please fill in all required fields.")
 
     try:
         type_id = int(type_id_str)
         start_dt = datetime.fromisoformat(start_datetime_str)
     except (ValueError, TypeError):
-        return templates.TemplateResponse("booking/error_partial.html", {
-            "request": request, "message": "Invalid booking data."
-        })
+        return _error("Invalid booking data.")
 
     appt_type = db.query(AppointmentType).filter_by(id=type_id, active=True).first()
     if not appt_type:
-        return templates.TemplateResponse("booking/error_partial.html", {
-            "request": request, "message": "Appointment type not found."
-        })
+        return _error("Appointment type not found.")
 
     end_dt = start_dt + timedelta(minutes=appt_type.duration_minutes)
 
@@ -545,16 +330,13 @@ async def submit_booking(
         Booking.end_datetime > start_dt,
     ).count()
     if overlap_count >= appt_type.max_concurrent:
-        return templates.TemplateResponse("booking/error_partial.html", {
-            "request": request,
-            "message": "That time slot was just booked. Please go back and choose another.",
-        })
+        return _error("That time slot was just booked. Please go back and choose another.")
 
     # Extract custom field responses
-    custom_responses = {}
-    for field in appt_type.custom_fields:
-        key = f"custom_{field['label']}"
-        custom_responses[field["label"]] = str(form_data.get(key, ""))
+    custom_responses = {
+        field["label"]: str(form_data.get(f"custom_{field['label']}", ""))
+        for field in appt_type.custom_fields
+    }
 
     booking = create_booking(
         db=db,
@@ -572,12 +354,7 @@ async def submit_booking(
     settings = get_settings()
     refresh_token = get_setting(db, "google_refresh_token", "")
     if refresh_token and settings.google_client_id:
-        from app.services.calendar import CalendarService
-        cal = CalendarService(
-            settings.google_client_id,
-            settings.google_client_secret,
-            settings.google_redirect_uri,
-        )
+        cal = build_calendar_service(settings)
         description_lines = [
             f"Guest: {guest_name}",
             f"Email: {guest_email}",
@@ -587,9 +364,9 @@ async def submit_booking(
         for k, v in custom_responses.items():
             description_lines.append(f"{k}: {v}")
         # start_dt/end_dt are naive local datetimes; convert to naive UTC for the calendar API
-        tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
-        start_utc = start_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
-        end_utc = end_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
+        tz = get_timezone(db)
+        start_utc = local_to_utc(start_dt, tz)
+        end_utc = local_to_utc(end_dt, tz)
         try:
             event_id = cal.create_event(
                 refresh_token=refresh_token,
@@ -607,7 +384,8 @@ async def submit_booking(
             booking.google_event_id = event_id
             db.commit()
         except Exception:
-            pass  # Booking saved; calendar failure is non-fatal
+            # Booking saved; calendar failure is non-fatal
+            logger.warning("Booking %s: calendar event creation failed", booking.id, exc_info=True)
 
         # Drive time block events (owner-only, non-fatal)
         # Skip if this is a group showing — owner is already at the location.
@@ -620,7 +398,7 @@ async def submit_booking(
         ).first() is not None
         if appt_type.requires_drive_time and appt_type.location and not is_group_showing:
             home_address = get_setting(db, "home_address", "")
-            dt_ids = _create_drive_time_blocks(
+            dt_ids = create_drive_time_blocks(
                 cal=cal,
                 refresh_token=refresh_token,
                 calendar_id=appt_type.calendar_id,
@@ -637,20 +415,15 @@ async def submit_booking(
 
     # Email notifications
     notify_email = get_setting(db, "notify_email", "")
-    notifications_enabled = get_setting(db, "notifications_enabled", "true") == "true"
     owner_name = get_setting(db, "owner_name", "")
     guest_appt_name = appt_type.guest_event_title or appt_type.name
-    resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)
-    from_email = get_setting(db, "from_email", settings.from_email)
-    if notifications_enabled and resend_api_key:
-        from app.services.email import send_guest_confirmation, send_admin_alert
+    email_config = get_email_config(db, settings)
+    if email_config.can_send:
         base_url = str(request.base_url).rstrip('/')
-        reschedule_url = base_url + f"/reschedule/{booking.reschedule_token}"
-        cancel_url = base_url + f"/cancel/{booking.reschedule_token}"
         try:
-            send_guest_confirmation(
-                api_key=resend_api_key,
-                from_email=from_email,
+            email.send_guest_confirmation(
+                api_key=email_config.api_key,
+                from_email=email_config.from_email,
                 guest_email=guest_email,
                 guest_name=guest_name,
                 appt_type_name=guest_appt_name,
@@ -659,18 +432,18 @@ async def submit_booking(
                 custom_responses=custom_responses,
                 owner_name=owner_name,
                 template=get_setting(db, "email_guest_confirmation", ""),
-                reschedule_url=reschedule_url,
-                cancel_url=cancel_url,
+                reschedule_url=f"{base_url}/reschedule/{booking.reschedule_token}",
+                cancel_url=f"{base_url}/cancel/{booking.reschedule_token}",
                 location=appt_type.location or "",
                 contact_phone=get_setting(db, "contact_phone", ""),
             )
         except Exception:
-            pass
+            logger.warning("Booking %s: guest confirmation email failed", booking.id, exc_info=True)
         if notify_email:
             try:
-                send_admin_alert(
-                    api_key=resend_api_key,
-                    from_email=from_email,
+                email.send_admin_alert(
+                    api_key=email_config.api_key,
+                    from_email=email_config.from_email,
                     notify_email=notify_email,
                     guest_name=guest_name,
                     guest_email=guest_email,
@@ -683,12 +456,11 @@ async def submit_booking(
                     location=appt_type.location or "",
                 )
             except Exception:
-                pass
+                logger.warning("Booking %s: admin alert email failed", booking.id, exc_info=True)
 
-    start_display = start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
     return templates.TemplateResponse("booking/confirmation_partial.html", {
         "request": request,
         "booking": booking,
-        "start_display": start_display,
+        "start_display": start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p"),
         "contact_phone": get_setting(db, "contact_phone", ""),
     })

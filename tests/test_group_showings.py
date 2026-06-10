@@ -109,8 +109,8 @@ def test_group_showing_slot_appears_when_one_booking_exists():
 
     mock_cal = _mock_cal_returning_booking_as_busy()
 
-    with patch("app.routers.slots.CalendarService", return_value=mock_cal), \
-         patch("app.routers.slots.get_settings") as ms:
+    with patch("app.services.slots.build_calendar_service", return_value=mock_cal), \
+         patch("app.services.slots.get_settings") as ms:
         _patch_slots_settings(ms)
         response = client.get(f"/slots?type_id={type_id}&date={TEST_DATE}")
 
@@ -144,8 +144,8 @@ def test_group_showing_slot_blocked_at_capacity():
 
     mock_cal = _mock_cal_returning_booking_as_busy()
 
-    with patch("app.routers.slots.CalendarService", return_value=mock_cal), \
-         patch("app.routers.slots.get_settings") as ms:
+    with patch("app.services.slots.build_calendar_service", return_value=mock_cal), \
+         patch("app.services.slots.get_settings") as ms:
         _patch_slots_settings(ms)
         response = client.get(f"/slots?type_id={type_id}&date={TEST_DATE}")
 
@@ -167,8 +167,8 @@ def test_standard_type_blocks_slot_normally():
 
     mock_cal = _mock_cal_returning_booking_as_busy()
 
-    with patch("app.routers.slots.CalendarService", return_value=mock_cal), \
-         patch("app.routers.slots.get_settings") as ms:
+    with patch("app.services.slots.build_calendar_service", return_value=mock_cal), \
+         patch("app.services.slots.get_settings") as ms:
         _patch_slots_settings(ms)
         response = client.get(f"/slots?type_id={type_id}&date={TEST_DATE}")
 
@@ -179,7 +179,7 @@ def test_standard_type_blocks_slot_normally():
 
 
 def test_group_showing_skips_drive_time_blocks():
-    """A group showing booking should not trigger _create_drive_time_blocks."""
+    """A group showing booking should not trigger create_drive_time_blocks."""
     from app.limiter import limiter
     limiter._storage.reset()
 
@@ -206,7 +206,7 @@ def test_group_showing_skips_drive_time_blocks():
     mock_settings.from_email = "test@example.com"
 
     with patch("app.routers.booking.get_settings", return_value=mock_settings), \
-         patch("app.routers.booking._create_drive_time_blocks", side_effect=fake_blocks), \
+         patch("app.routers.booking.create_drive_time_blocks", side_effect=fake_blocks), \
          patch("app.services.calendar.CalendarService.create_event", return_value="evt-id"):
         db2 = Session()
         set_setting(db2, "google_refresh_token", "fake-token")
@@ -283,7 +283,7 @@ def test_first_group_showing_booking_still_creates_drive_time_blocks():
     mock_settings.from_email = "test@example.com"
 
     with patch("app.routers.booking.get_settings", return_value=mock_settings), \
-         patch("app.routers.booking._create_drive_time_blocks", side_effect=fake_blocks), \
+         patch("app.routers.booking.create_drive_time_blocks", side_effect=fake_blocks), \
          patch("app.services.calendar.CalendarService.create_event", return_value="evt-id"):
         db2 = Session()
         set_setting(db2, "google_refresh_token", "fake-token")

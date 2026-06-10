@@ -1,7 +1,7 @@
 import json
 import uuid
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -88,6 +88,11 @@ class BlockedPeriod(Base):
 
 class Booking(Base):
     __tablename__ = "bookings"
+    __table_args__ = (
+        # Match the names used in database.init_db() so existing DBs converge.
+        Index("ix_bookings_status_start", "status", "start_datetime"),
+        Index("ix_bookings_type_status_start", "appointment_type_id", "status", "start_datetime"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     appointment_type_id: Mapped[int] = mapped_column(ForeignKey("appointment_types.id"))

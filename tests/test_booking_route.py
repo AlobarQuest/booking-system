@@ -190,18 +190,18 @@ def test_booking_model_has_drive_time_event_ids():
     assert b._drive_time_event_ids == '["abc", "def"]'
 
 
-def test_create_drive_time_blocks_returns_list():
-    """_create_drive_time_blocks should return a list (possibly empty)."""
+def testcreate_drive_time_blocks_returns_list():
+    """create_drive_time_blocks should return a list (possibly empty)."""
     from unittest.mock import MagicMock, patch
-    from app.routers.booking import _create_drive_time_blocks
+    from app.services.scheduling import create_drive_time_blocks
     import datetime
 
     cal = MagicMock()
     cal.get_events_for_day.return_value = []
     cal.create_event.return_value = "event-id-123"
 
-    with patch("app.routers.booking.get_drive_time", return_value=0):
-        result = _create_drive_time_blocks(
+    with patch("app.services.scheduling.get_drive_time", return_value=0):
+        result = create_drive_time_blocks(
             cal=cal,
             refresh_token="tok",
             calendar_id="primary",

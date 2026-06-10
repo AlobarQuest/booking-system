@@ -76,6 +76,18 @@ def init_db():
             "ON bookings (reschedule_token)"
         ))
 
+        # Indexes for the hot booking queries (dashboard, bookings list,
+        # conflict/group-capacity checks). IF NOT EXISTS keeps this idempotent
+        # for databases created before the indexes were introduced.
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_bookings_status_start "
+            "ON bookings (status, start_datetime)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_bookings_type_status_start "
+            "ON bookings (appointment_type_id, status, start_datetime)"
+        ))
+
         existing_ar = {row[1] for row in conn.execute(text("PRAGMA table_info(availability_rules)"))}
         for col, definition in [
             ("appointment_type_id", "INTEGER REFERENCES appointment_types(id)"),

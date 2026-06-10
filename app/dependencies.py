@@ -1,5 +1,7 @@
 import hmac
+import json
 import secrets
+from typing import NamedTuple
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -31,6 +33,39 @@ def set_setting(db: Session, key: str, value: str):
     else:
         db.add(Setting(key=key, value=value))
     db.commit()
+
+
+def get_conflict_calendars(db: Session) -> list[dict]:
+    """Return the configured extra conflict calendars ([{type, id, name}, ...])."""
+    raw = get_setting(db, "conflict_calendars", "[]")
+    try:
+        cals = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    return cals if isinstance(cals, list) else []
+
+
+def set_conflict_calendars(db: Session, cals: list[dict]) -> None:
+    set_setting(db, "conflict_calendars", json.dumps(cals))
+
+
+class EmailConfig(NamedTuple):
+    enabled: bool
+    api_key: str
+    from_email: str
+
+    @property
+    def can_send(self) -> bool:
+        return self.enabled and bool(self.api_key)
+
+
+def get_email_config(db: Session, settings) -> EmailConfig:
+    """Return notification settings, falling back to env-derived defaults."""
+    return EmailConfig(
+        enabled=get_setting(db, "notifications_enabled", "true") == "true",
+        api_key=get_setting(db, "resend_api_key", settings.resend_api_key),
+        from_email=get_setting(db, "from_email", settings.from_email),
+    )
 
 
 def get_csrf_token(request: Request) -> str:

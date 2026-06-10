@@ -9,7 +9,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import AppointmentType, AvailabilityRule
 from app.dependencies import set_setting
-from app.routers.slots import _compute_slots_for_type
+from app.services.slots import compute_slots_for_type
 
 
 def setup_db():
@@ -55,7 +55,7 @@ def setup_db():
 def test_slots_returns_html_for_valid_date():
     client, appt_id = setup_db()
     # 2025-03-03 is a Monday; mock utcnow to a time before the date so slots are not filtered
-    with patch("app.routers.slots.datetime") as mock_dt:
+    with patch("app.services.slots.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
         response = client.get(f"/slots?type_id={appt_id}&date=2025-03-03")
@@ -67,7 +67,7 @@ def test_slots_returns_html_for_valid_date():
 def test_slots_returns_no_slots_for_wrong_day():
     client, appt_id = setup_db()
     # 2025-03-04 is a Tuesday — no rules for Tuesday
-    with patch("app.routers.slots.datetime") as mock_dt:
+    with patch("app.services.slots.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
         response = client.get(f"/slots?type_id={appt_id}&date=2025-03-04")
@@ -86,7 +86,7 @@ def test_slots_invalid_type_returns_error():
 
 def test_slots_display_12_hour_format():
     client, appt_id = setup_db()
-    with patch("app.routers.slots.datetime") as mock_dt:
+    with patch("app.services.slots.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
         response = client.get(f"/slots?type_id={appt_id}&date=2025-03-03")
@@ -115,8 +115,8 @@ def test_slots_applies_drive_time_when_enabled(client):
     db.add(appt)
     db.commit()
 
-    with patch("app.routers.slots.trim_windows_for_drive_time", return_value=[]) as mock_trim, \
-         patch("app.routers.slots._build_free_windows", return_value=[]):
+    with patch("app.services.slots.trim_windows_for_drive_time", return_value=[]) as mock_trim, \
+         patch("app.services.slots._build_free_windows", return_value=[]):
         resp = client.get(f"/slots?type_id={appt.id}&date=2025-03-03")
     mock_trim.assert_called_once()
 
@@ -144,9 +144,9 @@ def test_slots_calendar_window_filters_slots(client):
     mock_settings.google_client_secret = "fake-secret"
     mock_settings.google_redirect_uri = "http://localhost/callback"
 
-    with patch("app.routers.slots.CalendarService") as MockCal, \
-         patch("app.routers.slots.get_settings", return_value=mock_settings), \
-         patch("app.routers.slots.datetime") as mock_dt:
+    with patch("app.services.slots.build_calendar_service") as MockCal, \
+         patch("app.services.slots.get_settings", return_value=mock_settings), \
+         patch("app.services.slots.datetime") as mock_dt:
         MockCal.return_value.get_events_for_day.return_value = []  # No matching events
         MockCal.return_value.get_busy_intervals.return_value = []
         mock_dt.now.return_value = datetime(2030, 9, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
@@ -190,9 +190,9 @@ def test_compute_slots_calendar_window_all_day_event_creates_window():
     mock_settings.google_client_secret = "fake-secret"
     mock_settings.google_redirect_uri = "http://localhost/callback"
 
-    with patch("app.routers.slots.get_settings", return_value=mock_settings), \
-         patch("app.routers.slots.CalendarService") as MockCal, \
-         patch("app.routers.slots.datetime") as mock_dt:
+    with patch("app.services.slots.get_settings", return_value=mock_settings), \
+         patch("app.services.slots.build_calendar_service") as MockCal, \
+         patch("app.services.slots.datetime") as mock_dt:
         MockCal.return_value.get_events_for_day.return_value = [
             {
                 "start": datetime(2030, 9, 16, 0, 0, 0),
@@ -204,7 +204,7 @@ def test_compute_slots_calendar_window_all_day_event_creates_window():
         MockCal.return_value.get_busy_intervals.return_value = []
         mock_dt.now.return_value = datetime(2030, 9, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
-        slots = _compute_slots_for_type(appt, target_date, db)
+        slots = compute_slots_for_type(appt, target_date, db)
 
     assert any(slot["display"] == "9:00 AM" for slot in slots)
     assert any(slot["display"] == "4:00 PM" for slot in slots)
@@ -245,14 +245,14 @@ def test_compute_slots_calendar_window_without_match_returns_no_slots():
     mock_settings.google_client_secret = "fake-secret"
     mock_settings.google_redirect_uri = "http://localhost/callback"
 
-    with patch("app.routers.slots.get_settings", return_value=mock_settings), \
-         patch("app.routers.slots.CalendarService") as MockCal, \
-         patch("app.routers.slots.datetime") as mock_dt:
+    with patch("app.services.slots.get_settings", return_value=mock_settings), \
+         patch("app.services.slots.build_calendar_service") as MockCal, \
+         patch("app.services.slots.datetime") as mock_dt:
         MockCal.return_value.get_events_for_day.return_value = []
         MockCal.return_value.get_busy_intervals.return_value = []
         mock_dt.now.return_value = datetime(2030, 9, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
-        slots = _compute_slots_for_type(appt, target_date, db)
+        slots = compute_slots_for_type(appt, target_date, db)
 
     assert slots == []
     db.close()
@@ -302,9 +302,9 @@ def test_slots_uses_destination_for_admin_initiated_type():
     app.dependency_overrides[get_db] = override
     client = TestClient(app)
 
-    with patch("app.routers.slots.datetime") as mock_dt, \
+    with patch("app.services.slots.datetime") as mock_dt, \
          patch("app.services.availability.get_drive_time", return_value=20), \
-         patch("app.routers.slots.trim_windows_for_drive_time", return_value=[(time(9, 0), time(17, 0))]) as mock_trim:
+         patch("app.services.slots.trim_windows_for_drive_time", return_value=[(time(9, 0), time(17, 0))]) as mock_trim:
         mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine
         resp = client.get(f"/slots?type_id={appt_id}&date=2025-03-03&destination=123+Main+St+Atlanta")

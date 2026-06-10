@@ -71,7 +71,7 @@ def test_schedule_inspection_creates_booking(insp_client):
     type_id = t.id
     db.close()
 
-    with patch("app.routers.admin.CalendarService"):
+    with patch("app.routers.admin.build_calendar_service"):
         resp = client.post("/admin/schedule-inspection", data={
             "type_id": str(type_id),
             "destination": "456 Oak Ave, Atlanta GA 30318",
@@ -110,7 +110,7 @@ def test_schedule_inspection_no_email_sent(insp_client):
     type_id = t.id
     db.close()
 
-    with patch("app.routers.admin.CalendarService"), \
+    with patch("app.routers.admin.build_calendar_service"), \
          patch("app.services.email.send_guest_confirmation") as mock_email:
         client.post("/admin/schedule-inspection", data={
             "type_id": str(type_id),
@@ -149,7 +149,7 @@ def test_inspection_slots_returns_html(insp_client):
     type_id = t.id
     db.close()
 
-    with patch("app.routers.admin.datetime") as mock_dt, \
+    with patch("app.services.slots.datetime") as mock_dt, \
          patch("app.services.availability.get_drive_time", return_value=0):
         mock_dt.now.return_value = datetime(2025, 3, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         mock_dt.combine = datetime.combine

@@ -1,5 +1,5 @@
 # tests/test_drive_time_blocks.py
-"""Unit tests for _create_drive_time_blocks in app/routers/booking.py."""
+"""Unit tests for create_drive_time_blocks in app/services/scheduling.py."""
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch, call
 
@@ -15,8 +15,8 @@ def _make_cal():
 def _run(cal, nearby_events, drive_minutes, appt_name="Consultation",
          appt_location="456 Property Ln", home_address="123 Home St",
          start_utc=None, end_utc=None):
-    """Helper: patch get_events_for_day and get_drive_time, then call _create_drive_time_blocks."""
-    from app.routers.booking import _create_drive_time_blocks
+    """Helper: patch get_events_for_day and get_drive_time, then call create_drive_time_blocks."""
+    from app.services.scheduling import create_drive_time_blocks
 
     if start_utc is None:
         start_utc = datetime(2026, 3, 1, 15, 0)   # 3:00 PM UTC
@@ -26,8 +26,8 @@ def _run(cal, nearby_events, drive_minutes, appt_name="Consultation",
     cal.get_events_for_day.return_value = nearby_events
 
     db = MagicMock()
-    with patch("app.routers.booking.get_drive_time", return_value=drive_minutes):
-        _create_drive_time_blocks(
+    with patch("app.services.scheduling.get_drive_time", return_value=drive_minutes):
+        create_drive_time_blocks(
             cal=cal,
             refresh_token="tok",
             calendar_id="primary",
@@ -266,7 +266,7 @@ def test_after_block_uses_earliest_following_event():
 
 
 def test_submit_booking_calls_drive_time_blocks_when_requires_drive_time():
-    """submit_booking calls _create_drive_time_blocks when requires_drive_time is True."""
+    """submit_booking calls create_drive_time_blocks when requires_drive_time is True."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
@@ -312,7 +312,7 @@ def test_submit_booking_calls_drive_time_blocks_when_requires_drive_time():
     app.dependency_overrides[get_db] = override
     app.dependency_overrides[require_csrf] = lambda: None
 
-    with patch("app.routers.booking._create_drive_time_blocks") as mock_blocks:
+    with patch("app.routers.booking.create_drive_time_blocks") as mock_blocks:
         mock_blocks.return_value = []
         with patch("app.routers.booking.get_settings") as mock_settings:
             from app.config import Settings
