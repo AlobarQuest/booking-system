@@ -52,17 +52,20 @@ def get_drive_time(origin: str, destination: str, db) -> int:
         data = resp.json()
         element = data["rows"][0]["elements"][0]
         if element["status"] != "OK":
+            # Don't log origin/destination: they are private addresses.
             logger.warning(
-                "Distance Matrix returned status %s for %s -> %s; using %s-minute default",
-                element["status"], origin, destination, DEFAULT_DRIVE_TIME_MINUTES,
+                "Distance Matrix returned element status %s; using %s-minute default",
+                element["status"], DEFAULT_DRIVE_TIME_MINUTES,
             )
             return DEFAULT_DRIVE_TIME_MINUTES
         duration_seconds = element["duration"]["value"]
         drive_minutes = (duration_seconds + 59) // 60  # round up to nearest minute
-    except Exception:
+    except Exception as exc:
+        # No addresses and no traceback here: httpx exception messages embed
+        # the request URL, which carries the Maps API key in its query string.
         logger.warning(
-            "Distance Matrix request failed for %s -> %s; using %s-minute default",
-            origin, destination, DEFAULT_DRIVE_TIME_MINUTES, exc_info=True,
+            "Distance Matrix request failed (%s); using %s-minute default",
+            type(exc).__name__, DEFAULT_DRIVE_TIME_MINUTES,
         )
         return DEFAULT_DRIVE_TIME_MINUTES
 
