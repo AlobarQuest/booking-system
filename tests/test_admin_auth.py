@@ -40,7 +40,7 @@ def test_logout_redirects_to_authentik_end_session(client):
 def test_google_authorize_stores_state_and_code_verifier_in_session():
     request = SimpleNamespace(session={})
     with unittest.mock.patch("app.routers.admin.get_settings") as mock_settings, \
-         unittest.mock.patch("app.routers.admin.CalendarService") as MockCalendarService:
+         unittest.mock.patch("app.routers.admin.build_calendar_service") as MockCalendarService:
         mock_settings.return_value.google_client_id = "cid"
         mock_settings.return_value.google_client_secret = "secret"
         mock_settings.return_value.google_redirect_uri = "https://example.com/callback"
@@ -63,7 +63,7 @@ def test_google_callback_passes_stored_code_verifier_to_exchange():
     )
     db = unittest.mock.MagicMock()
     with unittest.mock.patch("app.routers.admin.get_settings") as mock_settings, \
-         unittest.mock.patch("app.routers.admin.CalendarService") as MockCalendarService, \
+         unittest.mock.patch("app.routers.admin.build_calendar_service") as MockCalendarService, \
          unittest.mock.patch("app.routers.admin.set_setting") as mock_set_setting:
         mock_settings.return_value.google_client_id = "cid"
         mock_settings.return_value.google_client_secret = "secret"

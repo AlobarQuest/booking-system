@@ -1,26 +1,42 @@
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta
 from datetime import date as date_type
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.dependencies import get_setting, require_admin, require_csrf, set_setting
+from app.dependencies import (
+    get_conflict_calendars,
+    get_email_config,
+    get_setting,
+    require_admin,
+    require_csrf,
+    set_conflict_calendars,
+    set_setting,
+)
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
-from app.routers.booking import _delete_drive_time_events
-from app.routers.slots import _compute_slots_for_type
-from app.services.calendar import CalendarService
+from app.services import email
+from app.services.booking import cancel_booking, create_booking
+from app.services.calendar import build_calendar_service
+from app.services.scheduling import (
+    create_drive_time_blocks,
+    delete_booking_calendar_events,
+    perform_reschedule,
+)
+from app.services.slots import compute_inspection_slots, compute_slots_for_type
+from app.services.timeutils import get_timezone, local_to_utc
+from app.templating import templates
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin")
-templates = Jinja2Templates(directory="app/templates")
-templates.env.filters["enumerate"] = enumerate
-from app.dependencies import get_csrf_token as _get_csrf_token
-templates.env.globals["csrf_token"] = _get_csrf_token
 AuthDep = Depends(require_admin)
 
 
@@ -28,7 +44,6 @@ def _validate_url(url: str) -> str:
     """Return the URL only if its scheme is http or https; blank it otherwise."""
     if not url:
         return ""
-    from urllib.parse import urlparse
     scheme = urlparse(url).scheme.lower()
     return url if scheme in ("http", "https") else ""
 
@@ -39,6 +54,32 @@ def _flash(request: Request, message: str, type: str = "success"):
 
 def _get_flash(request: Request):
     return request.session.pop("flash", None)
+
+
+def _save_photo(photo: UploadFile, contents: bytes) -> str:
+    """Store an uploaded photo under a random name; return the filename."""
+    ext = os.path.splitext(photo.filename)[1].lower() or ".jpg"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    upload_dir = get_settings().upload_dir
+    os.makedirs(upload_dir, exist_ok=True)
+    with open(os.path.join(upload_dir, filename), "wb") as f:
+        f.write(contents)
+    return filename
+
+
+def _delete_photo(filename: str) -> None:
+    if not filename:
+        return
+    path = os.path.join(get_settings().upload_dir, filename)
+    if os.path.isfile(path):
+        os.remove(path)
+
+
+def _parse_rental_requirements(raw_json: str) -> list:
+    try:
+        return json.loads(raw_json)
+    except (json.JSONDecodeError, ValueError):
+        return []
 
 
 # ---------- Dashboard ----------
@@ -110,13 +151,14 @@ async def create_appt_type(
     _=AuthDep,
     _csrf_ok: None = Depends(require_csrf),
 ):
+    is_admin_initiated = admin_initiated == "true"
     t = AppointmentType(
         name=name, description=description, duration_minutes=duration_minutes,
         buffer_before_minutes=buffer_before_minutes, buffer_after_minutes=buffer_after_minutes,
         calendar_id=calendar_id, color=color, location=location, show_as=show_as,
         visibility=visibility, owner_event_title=owner_event_title, guest_event_title=guest_event_title,
-        admin_initiated=(admin_initiated == "true"),
-        requires_drive_time=True if (admin_initiated == "true") else (requires_drive_time == "true"),
+        admin_initiated=is_admin_initiated,
+        requires_drive_time=is_admin_initiated or requires_drive_time == "true",
         calendar_window_enabled=(calendar_window_enabled == "true"),
         calendar_window_title=calendar_window_title,
         calendar_window_calendar_id=calendar_window_calendar_id,
@@ -127,22 +169,12 @@ async def create_appt_type(
         active=True,
     )
     t.custom_fields = []
-    try:
-        t.rental_requirements = json.loads(rental_requirements_json)
-    except (json.JSONDecodeError, ValueError):
-        t.rental_requirements = []
+    t.rental_requirements = _parse_rental_requirements(rental_requirements_json)
     db.add(t)
     db.commit()
     db.refresh(t)
     if photo and photo.filename:
-        from app.config import get_settings as _gs
-        ext = os.path.splitext(photo.filename)[1].lower() or ".jpg"
-        filename = f"{uuid.uuid4().hex}{ext}"
-        upload_dir = _gs().upload_dir
-        os.makedirs(upload_dir, exist_ok=True)
-        with open(os.path.join(upload_dir, filename), "wb") as f:
-            f.write(await photo.read())
-        t.photo_filename = filename
+        t.photo_filename = _save_photo(photo, await photo.read())
         db.commit()
     _flash(request, f"Created '{name}'.")
     return RedirectResponse("/admin/appointment-types", status_code=302)
@@ -194,47 +226,34 @@ async def update_appt_type(
 ):
     t = db.query(AppointmentType).filter_by(id=type_id).first()
     if t:
-        t.name = name; t.description = description; t.duration_minutes = duration_minutes
+        t.name = name
+        t.description = description
+        t.duration_minutes = duration_minutes
         t.buffer_before_minutes = buffer_before_minutes
         t.buffer_after_minutes = buffer_after_minutes
-        t.calendar_id = calendar_id; t.color = color
-        t.location = location; t.show_as = show_as; t.visibility = visibility
+        t.calendar_id = calendar_id
+        t.color = color
+        t.location = location
+        t.show_as = show_as
+        t.visibility = visibility
         t.owner_event_title = owner_event_title
         t.guest_event_title = guest_event_title
-        t.admin_initiated = (admin_initiated == "true")
-        if t.admin_initiated:
-            t.requires_drive_time = True
-        else:
-            t.requires_drive_time = (requires_drive_time == "true")
-        t.calendar_window_enabled = (calendar_window_enabled == "true")
+        t.admin_initiated = admin_initiated == "true"
+        t.requires_drive_time = t.admin_initiated or requires_drive_time == "true"
+        t.calendar_window_enabled = calendar_window_enabled == "true"
         t.calendar_window_title = calendar_window_title
         t.calendar_window_calendar_id = calendar_window_calendar_id
         t.listing_url = _validate_url(listing_url)
         t.rental_application_url = _validate_url(rental_application_url)
-        t.owner_reminders_enabled = (owner_reminders_enabled == "true")
+        t.owner_reminders_enabled = owner_reminders_enabled == "true"
         t.max_concurrent = max(1, max_concurrent)
-        try:
-            t.rental_requirements = json.loads(rental_requirements_json)
-        except (json.JSONDecodeError, ValueError):
-            t.rental_requirements = []
-        from app.config import get_settings as _gs
-        upload_dir = _gs().upload_dir
-        if remove_photo == "true" and (t.photo_filename or ""):
-            old_path = os.path.join(upload_dir, t.photo_filename)
-            if os.path.isfile(old_path):
-                os.remove(old_path)
+        t.rental_requirements = _parse_rental_requirements(rental_requirements_json)
+        if remove_photo == "true" and t.photo_filename:
+            _delete_photo(t.photo_filename)
             t.photo_filename = ""
         elif photo and photo.filename:
-            if t.photo_filename or "":
-                old_path = os.path.join(upload_dir, t.photo_filename)
-                if os.path.isfile(old_path):
-                    os.remove(old_path)
-            ext = os.path.splitext(photo.filename)[1].lower() or ".jpg"
-            filename = f"{uuid.uuid4().hex}{ext}"
-            os.makedirs(upload_dir, exist_ok=True)
-            with open(os.path.join(upload_dir, filename), "wb") as f:
-                f.write(await photo.read())
-            t.photo_filename = filename
+            _delete_photo(t.photo_filename)
+            t.photo_filename = _save_photo(photo, await photo.read())
         db.commit()
         _flash(request, f"Updated '{name}'.")
     return RedirectResponse("/admin/appointment-types", status_code=302)
@@ -431,41 +450,20 @@ def cancel_booking_route(
     request: Request, booking_id: int, db: Session = Depends(get_db), _=AuthDep,
     _csrf_ok: None = Depends(require_csrf),
 ):
-    from app.services.booking import cancel_booking
     booking = db.query(Booking).filter_by(id=booking_id).first()
     if not booking:
         _flash(request, "Booking not found.", "error")
         return RedirectResponse("/admin/bookings", status_code=302)
 
     settings = get_settings()
-    refresh_token = get_setting(db, "google_refresh_token", "")
-    if refresh_token and settings.google_client_id:
-        cal = None
-        try:
-            cal = CalendarService(
-                settings.google_client_id,
-                settings.google_client_secret,
-                settings.google_redirect_uri,
-            )
-        except Exception:
-            pass
-        if cal:
-            try:
-                if booking.google_event_id:
-                    cal.delete_event(refresh_token, booking.appointment_type.calendar_id, booking.google_event_id)
-            except Exception:
-                pass
-            _delete_drive_time_events(cal, refresh_token, booking.appointment_type.calendar_id, booking.drive_time_event_ids)
+    delete_booking_calendar_events(db, booking, settings)
 
-    notify_enabled = get_setting(db, "notifications_enabled", "true") == "true"
-    resend_api_key = get_setting(db, "resend_api_key", settings.resend_api_key)
-    from_email = get_setting(db, "from_email", settings.from_email)
-    if notify_enabled and resend_api_key:
-        from app.services.email import send_cancellation_notice
+    email_config = get_email_config(db, settings)
+    if email_config.can_send:
         try:
-            send_cancellation_notice(
-                api_key=resend_api_key,
-                from_email=from_email,
+            email.send_cancellation_notice(
+                api_key=email_config.api_key,
+                from_email=email_config.from_email,
                 guest_email=booking.guest_email,
                 guest_name=booking.guest_name,
                 appt_type_name=booking.appointment_type.name,
@@ -473,7 +471,7 @@ def cancel_booking_route(
                 template=get_setting(db, "email_guest_cancellation", ""),
             )
         except Exception:
-            pass
+            logger.warning("Admin cancel: cancellation email failed", exc_info=True)
 
     cancel_booking(db, booking_id)
     _flash(request, f"Booking for {booking.guest_name} cancelled.")
@@ -495,7 +493,7 @@ def admin_reschedule_slots(
         target_date = date_type.fromisoformat(date)
     except ValueError:
         return HTMLResponse("")
-    slot_data = _compute_slots_for_type(
+    slot_data = compute_slots_for_type(
         booking.appointment_type, target_date, db,
         destination=booking.location, skip_advance_notice=True,
     )
@@ -515,15 +513,12 @@ def admin_reschedule_page(
         return RedirectResponse("/admin/bookings", status_code=302)
     max_future = int(get_setting(db, "max_future_days", "30"))
     now = datetime.utcnow()
-    min_date = now.date().isoformat()
-    max_date = (now + timedelta(days=max_future)).date().isoformat()
-    current_display = booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p")
     return templates.TemplateResponse("admin/admin_reschedule.html", {
         "request": request,
         "booking": booking,
-        "min_date": min_date,
-        "max_date": max_date,
-        "current_display": current_display,
+        "min_date": now.date().isoformat(),
+        "max_date": (now + timedelta(days=max_future)).date().isoformat(),
+        "current_display": booking.start_datetime.strftime("%A, %B %-d, %Y at %-I:%M %p"),
         "flash": _get_flash(request),
     })
 
@@ -534,7 +529,6 @@ def admin_reschedule_booking(
     _csrf_ok: None = Depends(require_csrf),
     start_datetime: str = Form(...),
 ):
-    from app.routers.booking import _perform_reschedule
     booking = db.query(Booking).filter_by(id=booking_id, status="confirmed").first()
     if not booking:
         _flash(request, "Booking not found.", "error")
@@ -547,7 +541,7 @@ def admin_reschedule_booking(
     settings = get_settings()
     base_url = str(request.base_url).rstrip('/')
     try:
-        _perform_reschedule(db, booking, new_start_dt, settings, base_url)
+        perform_reschedule(db, booking, new_start_dt, settings, base_url)
         _flash(request, f"Booking for {booking.guest_name} rescheduled to {new_start_dt.strftime('%b %-d at %-I:%M %p')}.")
     except ValueError as exc:
         _flash(request, f"Reschedule failed: {exc}", "error")
@@ -558,19 +552,8 @@ def admin_reschedule_booking(
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
-    import json as _json
     settings = get_settings()
     refresh_token = get_setting(db, "google_refresh_token", "")
-    cal = CalendarService(
-        settings.google_client_id,
-        settings.google_client_secret,
-        settings.google_redirect_uri,
-    )
-    conflict_cals_raw = get_setting(db, "conflict_calendars", "[]")
-    try:
-        conflict_cals = _json.loads(conflict_cals_raw)
-    except (ValueError, TypeError):
-        conflict_cals = []
     return templates.TemplateResponse("admin/settings.html", {
         "request": request,
         "owner_name": get_setting(db, "owner_name", ""),
@@ -581,8 +564,8 @@ def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         "resend_api_key_set": bool(get_setting(db, "resend_api_key", settings.resend_api_key)),
         "from_email": get_setting(db, "from_email", settings.from_email),
         "contact_phone": get_setting(db, "contact_phone", ""),
-        "google_authorized": cal.is_authorized(refresh_token),
-        "conflict_cals": conflict_cals,
+        "google_authorized": bool(refresh_token),
+        "conflict_cals": get_conflict_calendars(db),
         "email_guest_confirmation": get_setting(db, "email_guest_confirmation", ""),
         "email_admin_alert": get_setting(db, "email_admin_alert", ""),
         "email_guest_cancellation": get_setting(db, "email_guest_cancellation", ""),
@@ -619,7 +602,6 @@ def save_settings(
     return RedirectResponse("/admin/settings", status_code=302)
 
 
-
 @router.post("/settings/conflict-calendars")
 def add_conflict_calendar(
     request: Request,
@@ -630,16 +612,11 @@ def add_conflict_calendar(
     _=AuthDep,
     _csrf_ok: None = Depends(require_csrf),
 ):
-    import json as _json
-    raw = get_setting(db, "conflict_calendars", "[]")
-    try:
-        cals = _json.loads(raw)
-    except (ValueError, TypeError):
-        cals = []
+    cals = get_conflict_calendars(db)
     cal_id = cal_id.strip()
     if cal_id:
         cals.append({"type": cal_type, "id": cal_id, "name": cal_name.strip() or cal_id})
-        set_setting(db, "conflict_calendars", _json.dumps(cals))
+        set_conflict_calendars(db, cals)
         _flash(request, "Conflict calendar added.")
     return RedirectResponse("/admin/settings", status_code=302)
 
@@ -649,15 +626,10 @@ def delete_conflict_calendar(
     request: Request, index: int, db: Session = Depends(get_db), _=AuthDep,
     _csrf_ok: None = Depends(require_csrf),
 ):
-    import json as _json
-    raw = get_setting(db, "conflict_calendars", "[]")
-    try:
-        cals = _json.loads(raw)
-    except (ValueError, TypeError):
-        cals = []
+    cals = get_conflict_calendars(db)
     if 0 <= index < len(cals):
         cals.pop(index)
-        set_setting(db, "conflict_calendars", _json.dumps(cals))
+        set_conflict_calendars(db, cals)
         _flash(request, "Conflict calendar removed.")
     return RedirectResponse("/admin/settings", status_code=302)
 
@@ -683,12 +655,7 @@ def save_email_templates(
 
 @router.get("/google/authorize")
 def google_authorize(request: Request, _=AuthDep):
-    settings = get_settings()
-    cal = CalendarService(
-        settings.google_client_id,
-        settings.google_client_secret,
-        settings.google_redirect_uri,
-    )
+    cal = build_calendar_service(get_settings())
     url, state, code_verifier = cal.get_auth_url()
     request.session["oauth_state"] = state
     request.session["oauth_code_verifier"] = code_verifier
@@ -705,17 +672,13 @@ def google_callback(
     if not expected_state or received_state != expected_state:
         _flash(request, "OAuth state mismatch — possible CSRF. Please try again.", "error")
         return RedirectResponse("/admin/settings", status_code=302)
-    settings = get_settings()
-    cal = CalendarService(
-        settings.google_client_id,
-        settings.google_client_secret,
-        settings.google_redirect_uri,
-    )
+    cal = build_calendar_service(get_settings())
     try:
         refresh_token = cal.exchange_code(code, code_verifier=code_verifier)
         set_setting(db, "google_refresh_token", refresh_token)
         _flash(request, "Google Calendar connected successfully.")
     except Exception as e:
+        logger.warning("Google OAuth code exchange failed", exc_info=True)
         _flash(request, f"Google Calendar connection failed: {e}", "error")
     return RedirectResponse("/admin/settings", status_code=302)
 
@@ -724,7 +687,6 @@ def google_callback(
 
 @router.get("/schedule-inspection", response_class=HTMLResponse)
 def schedule_inspection_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
-    from datetime import date as _date
     admin_types = (
         db.query(AppointmentType)
         .filter_by(active=True, admin_initiated=True)
@@ -734,7 +696,7 @@ def schedule_inspection_page(request: Request, db: Session = Depends(get_db), _=
     return templates.TemplateResponse("admin/schedule_inspection.html", {
         "request": request,
         "admin_types": admin_types,
-        "today": _date.today().isoformat(),
+        "today": date_type.today().isoformat(),
         "flash": _get_flash(request),
     })
 
@@ -748,21 +710,6 @@ def inspection_slots(
     db: Session = Depends(get_db),
     _=AuthDep,
 ):
-    import json as _json
-    from datetime import date as date_type, time as time_type, timedelta, timezone as dt_timezone
-    from zoneinfo import ZoneInfo
-    from app.models import AvailabilityRule, BlockedPeriod
-    from app.services.availability import (
-        _build_free_windows,
-        intersect_windows,
-        split_into_slots,
-        filter_by_advance_notice,
-        trim_windows_for_drive_time,
-    )
-    from app.services.calendar import CalendarService
-    from app.config import get_settings
-
-    settings = get_settings()
     appt_type = db.query(AppointmentType).filter_by(id=type_id, active=True, admin_initiated=True).first()
     if not appt_type:
         return HTMLResponse("<p class='no-slots'>Appointment type not found.</p>")
@@ -771,67 +718,7 @@ def inspection_slots(
     except ValueError:
         return HTMLResponse("<p class='no-slots'>Invalid date.</p>")
 
-    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
-    local_midnight = datetime.combine(target_date, time_type(0, 0)).replace(tzinfo=tz)
-    day_start = local_midnight.astimezone(dt_timezone.utc).replace(tzinfo=None)
-    day_end = (local_midnight + timedelta(days=1)).astimezone(dt_timezone.utc).replace(tzinfo=None)
-
-    busy_intervals = []
-    local_day_events = []
-
-    refresh_token = get_setting(db, "google_refresh_token", "")
-    if refresh_token and settings.google_client_id:
-        cal = CalendarService(
-            settings.google_client_id,
-            settings.google_client_secret,
-            settings.google_redirect_uri,
-        )
-        try:
-            utc_busy = cal.get_busy_intervals(
-                refresh_token, [appt_type.calendar_id], day_start, day_end
-            )
-            for utc_start, utc_end in utc_busy:
-                local_start = utc_start.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                local_end = utc_end.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                busy_intervals.append((local_start, local_end))
-        except Exception:
-            pass
-
-        if destination:
-            try:
-                day_events_utc = cal.get_events_for_day(refresh_token, "primary", day_start, day_end)
-                for ev in day_events_utc:
-                    local_start = ev["start"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                    local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                    local_day_events.append({**ev, "start": local_start, "end": local_end})
-            except Exception:
-                pass
-
-    rules = db.query(AvailabilityRule).filter_by(active=True).all()
-    blocked = db.query(BlockedPeriod).all()
-    windows = _build_free_windows(target_date, rules, blocked, busy_intervals, appointment_type_id=appt_type.id)
-
-    if destination and windows:
-        home_address = get_setting(db, "home_address", "")
-        windows = trim_windows_for_drive_time(
-            windows, target_date, local_day_events,
-            destination=destination,
-            home_address=home_address,
-            db=db,
-        )
-
-    min_advance = int(get_setting(db, "min_advance_hours", "24"))
-    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-    slots = split_into_slots(
-        windows, appt_type.duration_minutes,
-        appt_type.buffer_before_minutes, appt_type.buffer_after_minutes,
-    )
-    slots = filter_by_advance_notice(slots, target_date, min_advance, now_local)
-
-    slot_data = [
-        {"value": s.strftime("%H:%M"), "display": s.strftime("%-I:%M %p")}
-        for s in slots
-    ]
+    slot_data = compute_inspection_slots(appt_type, target_date, db, destination=destination)
     return templates.TemplateResponse("admin/inspection_slots_partial.html", {
         "request": request,
         "slots": slot_data,
@@ -848,12 +735,6 @@ async def submit_inspection(
     _=AuthDep,
     _csrf_ok: None = Depends(require_csrf),
 ):
-    from datetime import timedelta, timezone as dt_timezone
-    from zoneinfo import ZoneInfo
-    from app.services.booking import create_booking
-    from app.services.calendar import CalendarService
-    from app.routers.booking import _create_drive_time_blocks
-
     form = await request.form()
     type_id_str = str(form.get("type_id", ""))
     destination = str(form.get("destination", "")).strip()
@@ -897,14 +778,10 @@ async def submit_inspection(
     settings = get_settings()
     refresh_token = get_setting(db, "google_refresh_token", "")
     if refresh_token and settings.google_client_id:
-        cal = CalendarService(
-            settings.google_client_id,
-            settings.google_client_secret,
-            settings.google_redirect_uri,
-        )
-        tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
-        start_utc = start_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
-        end_utc = end_dt.replace(tzinfo=tz).astimezone(dt_timezone.utc).replace(tzinfo=None)
+        cal = build_calendar_service(settings)
+        tz = get_timezone(db)
+        start_utc = local_to_utc(start_dt, tz)
+        end_utc = local_to_utc(end_dt, tz)
 
         description_lines = [f"Inspection at: {destination}"]
         if guest_name:
@@ -932,10 +809,9 @@ async def submit_inspection(
             booking.google_event_id = event_id
             db.commit()
         except Exception:
-            pass
+            logger.warning("Inspection booking %s: calendar event creation failed", booking.id, exc_info=True)
 
-        home_address = get_setting(db, "home_address", "")
-        _create_drive_time_blocks(
+        create_drive_time_blocks(
             cal=cal,
             refresh_token=refresh_token,
             calendar_id=appt_type.calendar_id,
@@ -943,7 +819,7 @@ async def submit_inspection(
             appt_location=destination,
             start_utc=start_utc,
             end_utc=end_utc,
-            home_address=home_address,
+            home_address=get_setting(db, "home_address", ""),
             db=db,
         )
 

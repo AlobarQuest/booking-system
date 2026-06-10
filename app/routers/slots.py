@@ -1,200 +1,15 @@
-import json as _json
-from datetime import datetime, date as date_type, time as time_type, timedelta, timezone as dt_timezone
-from zoneinfo import ZoneInfo
+from datetime import date as date_type
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_setting
-from app.models import AppointmentType, Booking, AvailabilityRule, BlockedPeriod
-from app.services.availability import (
-    _build_free_windows,
-    intersect_windows,
-    split_into_slots,
-    filter_by_advance_notice,
-    trim_windows_for_drive_time,
-)
-from app.services.calendar import CalendarService
-from app.config import get_settings
+from app.models import AppointmentType
+from app.services.slots import compute_slots_for_type
+from app.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
-
-
-def _compute_slots_for_type(
-    appt_type,
-    target_date,
-    db,
-    destination: str = "",
-    skip_advance_notice: bool = False,
-) -> list[dict]:
-    """Compute available time slots for a given appointment type and date.
-
-    Returns a list of {"value": "HH:MM", "display": "H:MM AM/PM"} dicts.
-    destination: override location (used for admin_initiated types).
-    skip_advance_notice: when True, omit the advance-notice cutoff filter (used by admin).
-    """
-    settings = get_settings()
-    effective_location = destination if appt_type.admin_initiated else appt_type.location
-
-    rules = db.query(AvailabilityRule).filter_by(active=True).all()
-    blocked = db.query(BlockedPeriod).all()
-    min_advance = int(get_setting(db, "min_advance_hours", "24"))
-    refresh_token = get_setting(db, "google_refresh_token", "")
-    tz = ZoneInfo(get_setting(db, "timezone", "America/New_York"))
-
-    local_midnight = datetime.combine(target_date, time_type(0, 0)).replace(tzinfo=tz)
-    day_start = local_midnight.astimezone(dt_timezone.utc).replace(tzinfo=None)
-    day_end = (local_midnight + timedelta(days=1)).astimezone(dt_timezone.utc).replace(tzinfo=None)
-
-    conflict_cals_raw = get_setting(db, "conflict_calendars", "[]")
-    try:
-        conflict_cals = _json.loads(conflict_cals_raw)
-    except (ValueError, TypeError):
-        conflict_cals = []
-    extra_google_ids = [c["id"] for c in conflict_cals if c.get("type") == "google" and c.get("id")]
-    webcal_urls = [c["id"] for c in conflict_cals if c.get("type") == "webcal" and c.get("id")]
-
-    busy_intervals = []
-    window_intervals = []
-    local_day_events = []
-    calendar_window_active = bool(
-        appt_type.calendar_window_enabled and (appt_type.calendar_window_title or "").strip()
-    )
-
-    google_ids_for_freebusy = set()
-    google_ids_for_freebusy.add(appt_type.calendar_id)
-    google_ids_for_freebusy.update(extra_google_ids)
-
-    if refresh_token and settings.google_client_id:
-        cal = CalendarService(
-            settings.google_client_id,
-            settings.google_client_secret,
-            settings.google_redirect_uri,
-        )
-
-        if calendar_window_active:
-            window_cal_id = appt_type.calendar_window_calendar_id or appt_type.calendar_id
-            google_ids_for_freebusy.discard(window_cal_id)
-            try:
-                window_cal_events = cal.get_events_for_day(
-                    refresh_token,
-                    window_cal_id,
-                    day_start,
-                    day_end,
-                    include_all_day=True,
-                )
-                title_lower = appt_type.calendar_window_title.lower().strip()
-                for ev in window_cal_events:
-                    local_start = ev["start"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                    local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                    if ev["summary"].lower().strip() == title_lower:
-                        window_start = time_type(0, 0) if local_start.date() < target_date else local_start.time()
-                        window_end = time_type(23, 59, 59) if local_end.date() > target_date else local_end.time()
-                        window_intervals.append((window_start, window_end))
-                    else:
-                        busy_intervals.append((local_start, local_end))
-            except Exception:
-                pass
-
-        if google_ids_for_freebusy:
-            try:
-                utc_busy = cal.get_busy_intervals(refresh_token, list(google_ids_for_freebusy), day_start, day_end)
-                for utc_start, utc_end in utc_busy:
-                    local_start = utc_start.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                    local_end = utc_end.replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                    busy_intervals.append((local_start, local_end))
-            except Exception:
-                pass
-
-        if appt_type.requires_drive_time and effective_location:
-            try:
-                day_events_utc = cal.get_events_for_day(refresh_token, "primary", day_start, day_end)
-                for ev in day_events_utc:
-                    local_start = ev["start"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                    local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                    local_day_events.append({**ev, "start": local_start, "end": local_end})
-            except Exception:
-                pass
-
-    for webcal_url in webcal_urls:
-        try:
-            from app.services.calendar import fetch_webcal_events
-            wc_events = fetch_webcal_events(webcal_url, day_start, day_end)
-            for ev in wc_events:
-                local_start = ev["start"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                local_end = ev["end"].replace(tzinfo=dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-                busy_intervals.append((local_start, local_end))
-                if appt_type.requires_drive_time and effective_location and ev["location"]:
-                    local_day_events.append({**ev, "start": local_start, "end": local_end})
-        except Exception:
-            pass
-
-    # Group showings: query confirmed same-type bookings for post-filtering.
-    same_type_bookings: list = []
-    if appt_type.max_concurrent > 1:
-        day_local_start = datetime.combine(target_date, time_type(0, 0))
-        day_local_end = datetime.combine(target_date, time_type(23, 59, 59))
-        same_type_bookings = db.query(Booking).filter(
-            Booking.appointment_type_id == appt_type.id,
-            Booking.status == "confirmed",
-            Booking.start_datetime >= day_local_start,
-            Booking.start_datetime <= day_local_end,
-        ).all()
-
-    windows = _build_free_windows(target_date, rules, blocked, busy_intervals, appointment_type_id=appt_type.id)
-
-    if calendar_window_active:
-        windows = intersect_windows(windows, window_intervals)
-
-    if appt_type.requires_drive_time and effective_location:
-        home_address = get_setting(db, "home_address", "")
-        windows = trim_windows_for_drive_time(
-            windows, target_date, local_day_events,
-            destination=effective_location,
-            home_address=home_address,
-            db=db,
-        )
-
-    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
-    slots = split_into_slots(
-        windows, appt_type.duration_minutes,
-        appt_type.buffer_before_minutes, appt_type.buffer_after_minutes,
-    )
-    if not skip_advance_notice:
-        slots = filter_by_advance_notice(slots, target_date, min_advance, now_local)
-    else:
-        slots = filter_by_advance_notice(slots, target_date, 0, now_local)
-
-    # Group showings: inject same-type booking start times back as candidates,
-    # then post-filter by concurrent count.
-    #
-    # Why inject instead of un-blocking freebusy intervals: Google Calendar's
-    # freebusy API merges adjacent events (e.g. a drive-time block ending at
-    # 1:00 PM and a booking starting at 1:00 PM become one interval 12:30-1:20).
-    # Exact-tuple removal cannot split merged intervals, so the slot stays
-    # blocked even when capacity remains. Injecting the booking start times
-    # directly bypasses this limitation — the DB is the source of truth for
-    # which same-type slots have been taken.
-    if appt_type.max_concurrent > 1 and same_type_bookings:
-        booking_times = {b.start_datetime.time() for b in same_type_bookings}
-        slots = sorted(set(slots) | booking_times)
-
-        def _overlapping_count(slot_time) -> int:
-            slot_start_dt = datetime.combine(target_date, slot_time)
-            slot_end_dt = slot_start_dt + timedelta(minutes=appt_type.duration_minutes)
-            return sum(
-                1 for b in same_type_bookings
-                if b.start_datetime < slot_end_dt and b.end_datetime > slot_start_dt
-            )
-        slots = [s for s in slots if _overlapping_count(s) < appt_type.max_concurrent]
-
-    return [
-        {"value": s.strftime("%H:%M"), "display": s.strftime("%-I:%M %p")}
-        for s in slots
-    ]
 
 
 @router.get("/slots", response_class=HTMLResponse)
@@ -213,7 +28,7 @@ def get_slots(
     except ValueError:
         return HTMLResponse("<p class='no-slots'>Invalid date format.</p>")
 
-    slot_data = _compute_slots_for_type(appt_type, target_date, db, destination=destination)
+    slot_data = compute_slots_for_type(appt_type, target_date, db, destination=destination)
     return templates.TemplateResponse(
         "booking/slots_partial.html",
         {"request": request, "slots": slot_data, "type_id": type_id, "date": date},

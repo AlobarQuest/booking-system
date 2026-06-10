@@ -7,6 +7,35 @@ def _format_dt(dt: datetime) -> str:
     return dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
 
 
+def _render_custom_fields(custom_responses: dict) -> str:
+    return "".join(
+        f"<p><strong>{escape(str(k))}:</strong> {escape(str(v))}</p>"
+        for k, v in custom_responses.items() if v
+    )
+
+
+def _render(template: str, default: str, **context) -> str:
+    """Render a user-editable template, falling back to the trusted default.
+
+    Admin-edited templates may reference placeholders that no longer exist
+    (or contain stray braces); the default must always render.
+    """
+    try:
+        return (template or default).format(**context)
+    except (KeyError, ValueError, IndexError):
+        return default.format(**context)
+
+
+def _send(api_key: str, from_email: str, to_email: str, subject: str, html: str) -> None:
+    resend.api_key = api_key
+    resend.Emails.send({
+        "from": from_email,
+        "to": [to_email],
+        "subject": subject,
+        "html": html,
+    })
+
+
 # These are trusted fallback templates — all placeholders must match the kwargs in each send function.
 _GUEST_CONFIRMATION_DEFAULT = """\
 <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1e293b;">
@@ -65,11 +94,6 @@ def send_guest_confirmation(
     location: str = "",
     contact_phone: str = "",
 ):
-    resend.api_key = api_key
-    custom_html = "".join(
-        f"<p><strong>{escape(str(k))}:</strong> {escape(str(v))}</p>"
-        for k, v in custom_responses.items() if v
-    )
     location_row = (
         f'<tr style="border-bottom:1px solid #e2e8f0;">'
         f'<td style="padding:.5rem 1rem .5rem 0;color:#64748b;white-space:nowrap;vertical-align:top;">Location</td>'
@@ -82,36 +106,24 @@ def send_guest_confirmation(
         f'This is an agent guided tour. The agent will meet you at the property '
         f'at your appointment time. Their number is <strong>{escape(contact_phone)}</strong>.</p>'
     ) if contact_phone.strip() else ""
-    try:
-        html = (template or _GUEST_CONFIRMATION_DEFAULT).format(
-            guest_name=escape(guest_name),
-            appt_type=escape(appt_type_name),
-            date_time=_format_dt(start_dt),
-            owner_name=escape(owner_name),
-            custom_fields=custom_html,
-            reschedule_url=escape(reschedule_url),
-            cancel_url=escape(cancel_url),
-            location_row=location_row,
-            agent_info=agent_info,
-        )
-    except (KeyError, ValueError, IndexError):
-        html = _GUEST_CONFIRMATION_DEFAULT.format(
-            guest_name=escape(guest_name),
-            appt_type=escape(appt_type_name),
-            date_time=_format_dt(start_dt),
-            owner_name=escape(owner_name),
-            custom_fields=custom_html,
-            reschedule_url=escape(reschedule_url),
-            cancel_url=escape(cancel_url),
-            location_row=location_row,
-            agent_info=agent_info,
-        )
-    resend.Emails.send({
-        "from": from_email,
-        "to": [guest_email],
-        "subject": f"Your {appt_type_name} is confirmed — {start_dt.strftime('%b %-d')}",
-        "html": html,
-    })
+    html = _render(
+        template,
+        _GUEST_CONFIRMATION_DEFAULT,
+        guest_name=escape(guest_name),
+        appt_type=escape(appt_type_name),
+        date_time=_format_dt(start_dt),
+        owner_name=escape(owner_name),
+        custom_fields=_render_custom_fields(custom_responses),
+        reschedule_url=escape(reschedule_url),
+        cancel_url=escape(cancel_url),
+        location_row=location_row,
+        agent_info=agent_info,
+    )
+    _send(
+        api_key, from_email, guest_email,
+        subject=f"Your {appt_type_name} is confirmed — {start_dt.strftime('%b %-d')}",
+        html=html,
+    )
 
 
 def send_admin_alert(
@@ -128,40 +140,24 @@ def send_admin_alert(
     template: str = "",
     location: str = "",
 ):
-    resend.api_key = api_key
-    custom_html = "".join(
-        f"<p><strong>{escape(str(k))}:</strong> {escape(str(v))}</p>"
-        for k, v in custom_responses.items() if v
-    )
     location_line = f"<p><strong>Location:</strong> {escape(location)}</p>\n" if location.strip() else ""
-    try:
-        html = (template or _ADMIN_ALERT_DEFAULT).format(
-            guest_name=escape(guest_name),
-            guest_email=escape(guest_email),
-            guest_phone=escape(guest_phone or "not provided"),
-            appt_type=escape(appt_type_name),
-            date_time=_format_dt(start_dt),
-            notes=escape(notes or "none"),
-            custom_fields=custom_html,
-            location_line=location_line,
-        )
-    except (KeyError, ValueError, IndexError):
-        html = _ADMIN_ALERT_DEFAULT.format(
-            guest_name=escape(guest_name),
-            guest_email=escape(guest_email),
-            guest_phone=escape(guest_phone or "not provided"),
-            appt_type=escape(appt_type_name),
-            date_time=_format_dt(start_dt),
-            notes=escape(notes or "none"),
-            custom_fields=custom_html,
-            location_line=location_line,
-        )
-    resend.Emails.send({
-        "from": from_email,
-        "to": [notify_email],
-        "subject": f"New booking: {guest_name} — {appt_type_name} on {start_dt.strftime('%b %-d')}",
-        "html": html,
-    })
+    html = _render(
+        template,
+        _ADMIN_ALERT_DEFAULT,
+        guest_name=escape(guest_name),
+        guest_email=escape(guest_email),
+        guest_phone=escape(guest_phone or "not provided"),
+        appt_type=escape(appt_type_name),
+        date_time=_format_dt(start_dt),
+        notes=escape(notes or "none"),
+        custom_fields=_render_custom_fields(custom_responses),
+        location_line=location_line,
+    )
+    _send(
+        api_key, from_email, notify_email,
+        subject=f"New booking: {guest_name} — {appt_type_name} on {start_dt.strftime('%b %-d')}",
+        html=html,
+    )
 
 
 def send_cancellation_notice(
@@ -173,22 +169,15 @@ def send_cancellation_notice(
     start_dt: datetime,
     template: str = "",
 ):
-    resend.api_key = api_key
-    try:
-        html = (template or _CANCELLATION_DEFAULT).format(
-            guest_name=escape(guest_name),
-            appt_type=escape(appt_type_name),
-            date_time=_format_dt(start_dt),
-        )
-    except (KeyError, ValueError, IndexError):
-        html = _CANCELLATION_DEFAULT.format(
-            guest_name=escape(guest_name),
-            appt_type=escape(appt_type_name),
-            date_time=_format_dt(start_dt),
-        )
-    resend.Emails.send({
-        "from": from_email,
-        "to": [guest_email],
-        "subject": f"Your {appt_type_name} on {start_dt.strftime('%b %-d')} has been cancelled",
-        "html": html,
-    })
+    html = _render(
+        template,
+        _CANCELLATION_DEFAULT,
+        guest_name=escape(guest_name),
+        appt_type=escape(appt_type_name),
+        date_time=_format_dt(start_dt),
+    )
+    _send(
+        api_key, from_email, guest_email,
+        subject=f"Your {appt_type_name} on {start_dt.strftime('%b %-d')} has been cancelled",
+        html=html,
+    )

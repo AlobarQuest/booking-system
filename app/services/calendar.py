@@ -13,6 +13,15 @@ SCOPES = [
 ]
 
 
+def build_calendar_service(settings) -> "CalendarService":
+    """Construct a CalendarService from app Settings (single construction point)."""
+    return CalendarService(
+        settings.google_client_id,
+        settings.google_client_secret,
+        settings.google_redirect_uri,
+    )
+
+
 class CalendarService:
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id

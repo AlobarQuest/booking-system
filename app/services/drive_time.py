@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime, timedelta
 
 import httpx
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 MAPS_DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
 CACHE_TTL_DAYS = 30
@@ -49,10 +52,18 @@ def get_drive_time(origin: str, destination: str, db) -> int:
         data = resp.json()
         element = data["rows"][0]["elements"][0]
         if element["status"] != "OK":
+            logger.warning(
+                "Distance Matrix returned status %s for %s -> %s; using %s-minute default",
+                element["status"], origin, destination, DEFAULT_DRIVE_TIME_MINUTES,
+            )
             return DEFAULT_DRIVE_TIME_MINUTES
         duration_seconds = element["duration"]["value"]
         drive_minutes = (duration_seconds + 59) // 60  # round up to nearest minute
     except Exception:
+        logger.warning(
+            "Distance Matrix request failed for %s -> %s; using %s-minute default",
+            origin, destination, DEFAULT_DRIVE_TIME_MINUTES, exc_info=True,
+        )
         return DEFAULT_DRIVE_TIME_MINUTES
 
     # Upsert cache
