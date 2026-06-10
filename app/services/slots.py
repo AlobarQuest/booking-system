@@ -11,6 +11,7 @@ local time before interval math (see app.services.timeutils).
 """
 import logging
 from datetime import date, datetime, time as time_type, timedelta, timezone as dt_timezone
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
@@ -161,8 +162,13 @@ def compute_slots_for_type(
                 busy_intervals.append((local_ev["start"], local_ev["end"]))
                 if appt_type.requires_drive_time and effective_location and ev["location"]:
                     local_day_events.append(local_ev)
-        except Exception:
-            logger.warning("Webcal fetch failed for %s", webcal_url, exc_info=True)
+        except Exception as exc:
+            # Log host + exception class only: webcal URLs are capability
+            # secrets, and httpx exception messages embed the full URL.
+            logger.warning(
+                "Webcal fetch failed for feed host %s (%s)",
+                urlparse(webcal_url).netloc, type(exc).__name__,
+            )
 
     # Group showings: query confirmed same-type bookings for post-filtering.
     same_type_bookings: list[Booking] = []
