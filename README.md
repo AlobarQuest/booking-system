@@ -17,8 +17,8 @@ Personal appointment booking system with a public booking interface and admin pa
 - Editable email templates in admin panel
 - Photo upload, listing URL, and rental requirements per appointment type
 - Rental application link per appointment type
-- Single-password admin authentication with CSRF protection on all forms
-- Rate-limited admin login (5 requests/minute)
+- Admin authentication via Alobar ID (Authentik OIDC SSO), CSRF protection on all forms
+- Rate-limited public booking/reschedule/cancel endpoints
 - Security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy)
 
 ## Local Development
@@ -30,12 +30,28 @@ cp .env.example .env   # fill in your values
 uvicorn app.main:app --reload --port 8080
 ```
 
-Open http://localhost:8080 — first visit to `/admin` redirects to password setup.
+Open http://localhost:8080 — visiting `/admin` redirects to the Alobar ID (OIDC) login.
 
 ## Running Tests
 
 ```bash
 pytest -v
+```
+
+## Database Migrations
+
+The schema is still created/patched at startup by `app/database.py:init_db()`
+(idempotent), but new schema changes should be Alembic migrations:
+
+```bash
+alembic revision --autogenerate -m "describe the change"
+alembic upgrade head
+```
+
+Existing databases must be marked as being at the pre-Alembic baseline once:
+
+```bash
+alembic stamp 0001
 ```
 
 ## Deployment

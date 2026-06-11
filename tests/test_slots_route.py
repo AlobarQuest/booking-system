@@ -191,8 +191,7 @@ def test_compute_slots_calendar_window_all_day_event_creates_window():
     mock_settings.google_redirect_uri = "http://localhost/callback"
 
     with patch("app.services.slots.get_settings", return_value=mock_settings), \
-         patch("app.services.slots.build_calendar_service") as MockCal, \
-         patch("app.services.slots.datetime") as mock_dt:
+         patch("app.services.slots.build_calendar_service") as MockCal:
         MockCal.return_value.get_events_for_day.return_value = [
             {
                 "start": datetime(2030, 9, 16, 0, 0, 0),
@@ -202,9 +201,7 @@ def test_compute_slots_calendar_window_all_day_event_creates_window():
             }
         ]
         MockCal.return_value.get_busy_intervals.return_value = []
-        mock_dt.now.return_value = datetime(2030, 9, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
-        mock_dt.combine = datetime.combine
-        slots = compute_slots_for_type(appt, target_date, db)
+        slots = compute_slots_for_type(appt, target_date, db, now=datetime(2030, 9, 1, 0, 0, 0))
 
     assert any(slot["display"] == "9:00 AM" for slot in slots)
     assert any(slot["display"] == "4:00 PM" for slot in slots)
@@ -246,13 +243,10 @@ def test_compute_slots_calendar_window_without_match_returns_no_slots():
     mock_settings.google_redirect_uri = "http://localhost/callback"
 
     with patch("app.services.slots.get_settings", return_value=mock_settings), \
-         patch("app.services.slots.build_calendar_service") as MockCal, \
-         patch("app.services.slots.datetime") as mock_dt:
+         patch("app.services.slots.build_calendar_service") as MockCal:
         MockCal.return_value.get_events_for_day.return_value = []
         MockCal.return_value.get_busy_intervals.return_value = []
-        mock_dt.now.return_value = datetime(2030, 9, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
-        mock_dt.combine = datetime.combine
-        slots = compute_slots_for_type(appt, target_date, db)
+        slots = compute_slots_for_type(appt, target_date, db, now=datetime(2030, 9, 1, 0, 0, 0))
 
     assert slots == []
     db.close()

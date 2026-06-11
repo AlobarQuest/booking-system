@@ -1,7 +1,9 @@
 import hmac
 import json
 import secrets
-from typing import NamedTuple
+from dataclasses import dataclass
+from functools import cached_property
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -37,7 +39,48 @@ def set_setting(db: Session, key: str, value: str):
 
 def get_conflict_calendars(db: Session) -> list[dict]:
     """Return the configured extra conflict calendars ([{type, id, name}, ...])."""
-    raw = get_setting(db, "conflict_calendars", "[]")
+    return _parse_conflict_calendars(get_setting(db, "conflict_calendars", "[]"))
+
+
+def set_conflict_calendars(db: Session, cals: list[dict]) -> None:
+    set_setting(db, "conflict_calendars", json.dumps(cals))
+
+
+@dataclass(frozen=True)
+class DbSettings:
+    """Typed snapshot of the DB-backed settings, loaded with one query.
+
+    Hot paths previously issued ~10 individual Setting queries per request;
+    load_db_settings() replaces them. Where a key exists in both the DB and
+    the environment (resend_api_key, from_email), the DB value wins and the
+    environment is the fallback — same precedence as the old per-key reads.
+    """
+    timezone_name: str
+    min_advance_hours: int
+    max_future_days: int
+    google_refresh_token: str
+    home_address: str
+    owner_name: str
+    notify_email: str
+    contact_phone: str
+    notifications_enabled: bool
+    resend_api_key: str
+    from_email: str
+    conflict_calendars: list
+    email_guest_confirmation: str
+    email_admin_alert: str
+    email_guest_cancellation: str
+
+    @cached_property
+    def tzinfo(self) -> ZoneInfo:
+        return ZoneInfo(self.timezone_name)
+
+    @property
+    def can_send_email(self) -> bool:
+        return self.notifications_enabled and bool(self.resend_api_key)
+
+
+def _parse_conflict_calendars(raw: str) -> list:
     try:
         cals = json.loads(raw)
     except (ValueError, TypeError):
@@ -45,26 +88,29 @@ def get_conflict_calendars(db: Session) -> list[dict]:
     return cals if isinstance(cals, list) else []
 
 
-def set_conflict_calendars(db: Session, cals: list[dict]) -> None:
-    set_setting(db, "conflict_calendars", json.dumps(cals))
+def load_db_settings(db: Session, env) -> DbSettings:
+    """Load all DB settings in a single query. env: the app Settings object."""
+    values = {row.key: row.value for row in db.query(Setting).all()}
 
+    def get(key: str, default: str = "") -> str:
+        return values.get(key, default)
 
-class EmailConfig(NamedTuple):
-    enabled: bool
-    api_key: str
-    from_email: str
-
-    @property
-    def can_send(self) -> bool:
-        return self.enabled and bool(self.api_key)
-
-
-def get_email_config(db: Session, settings) -> EmailConfig:
-    """Return notification settings, falling back to env-derived defaults."""
-    return EmailConfig(
-        enabled=get_setting(db, "notifications_enabled", "true") == "true",
-        api_key=get_setting(db, "resend_api_key", settings.resend_api_key),
-        from_email=get_setting(db, "from_email", settings.from_email),
+    return DbSettings(
+        timezone_name=get("timezone", "America/New_York"),
+        min_advance_hours=int(get("min_advance_hours", "24")),
+        max_future_days=int(get("max_future_days", "30")),
+        google_refresh_token=get("google_refresh_token"),
+        home_address=get("home_address"),
+        owner_name=get("owner_name"),
+        notify_email=get("notify_email"),
+        contact_phone=get("contact_phone"),
+        notifications_enabled=get("notifications_enabled", "true") == "true",
+        resend_api_key=get("resend_api_key", env.resend_api_key),
+        from_email=get("from_email", env.from_email),
+        conflict_calendars=_parse_conflict_calendars(get("conflict_calendars", "[]")),
+        email_guest_confirmation=get("email_guest_confirmation"),
+        email_admin_alert=get("email_admin_alert"),
+        email_guest_cancellation=get("email_guest_cancellation"),
     )
 
 

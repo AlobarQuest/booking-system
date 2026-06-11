@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.dependencies import get_conflict_calendars, get_setting
+from app.dependencies import load_db_settings
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
 from app.services.availability import (
     _build_free_windows,
@@ -27,7 +27,7 @@ from app.services.availability import (
 )
 from app.services.cache import availability_cache
 from app.services.calendar import build_calendar_service, fetch_webcal_events
-from app.services.timeutils import get_timezone, local_day_bounds_utc, utc_to_local
+from app.services.timeutils import local_day_bounds_utc, utc_to_local
 
 logger = logging.getLogger(__name__)
 
@@ -90,26 +90,29 @@ def compute_slots_for_type(
     db: Session,
     destination: str = "",
     skip_advance_notice: bool = False,
+    now: datetime | None = None,
 ) -> list[dict]:
     """Compute available time slots for a given appointment type and date.
 
     Returns a list of {"value": "HH:MM", "display": "H:MM AM/PM"} dicts.
     destination: override location (used for admin_initiated types).
     skip_advance_notice: when True, omit the advance-notice cutoff filter (used by admin).
+    now: naive local "current time" override — a test seam for the
+    advance-notice filter; defaults to the real clock.
     """
     settings = get_settings()
+    dbs = load_db_settings(db, settings)
     effective_location = destination if appt_type.admin_initiated else appt_type.location
 
     rules = db.query(AvailabilityRule).filter_by(active=True).all()
     blocked = db.query(BlockedPeriod).all()
-    min_advance = int(get_setting(db, "min_advance_hours", "24"))
-    refresh_token = get_setting(db, "google_refresh_token", "")
-    tz = get_timezone(db)
+    min_advance = dbs.min_advance_hours
+    refresh_token = dbs.google_refresh_token
+    tz = dbs.tzinfo
     day_start, day_end = local_day_bounds_utc(target_date, tz)
 
-    conflict_cals = get_conflict_calendars(db)
-    extra_google_ids = [c["id"] for c in conflict_cals if c.get("type") == "google" and c.get("id")]
-    webcal_urls = [c["id"] for c in conflict_cals if c.get("type") == "webcal" and c.get("id")]
+    extra_google_ids = [c["id"] for c in dbs.conflict_calendars if c.get("type") == "google" and c.get("id")]
+    webcal_urls = [c["id"] for c in dbs.conflict_calendars if c.get("type") == "webcal" and c.get("id")]
 
     busy_intervals: list[tuple[datetime, datetime]] = []
     window_intervals: list[tuple[time_type, time_type]] = []
@@ -217,11 +220,11 @@ def compute_slots_for_type(
         windows = trim_windows_for_drive_time(
             windows, target_date, local_day_events,
             destination=effective_location,
-            home_address=get_setting(db, "home_address", ""),
+            home_address=dbs.home_address,
             db=db,
         )
 
-    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
+    now_local = now if now is not None else datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
     slots = split_into_slots(
         windows, appt_type.duration_minutes,
         appt_type.buffer_before_minutes, appt_type.buffer_after_minutes,
@@ -243,6 +246,7 @@ def compute_inspection_slots(
     target_date: date,
     db: Session,
     destination: str = "",
+    now: datetime | None = None,
 ) -> list[dict]:
     """Compute slots for the admin "schedule inspection" flow.
 
@@ -252,13 +256,14 @@ def compute_inspection_slots(
     drive time to the ad-hoc destination.
     """
     settings = get_settings()
-    tz = get_timezone(db)
+    dbs = load_db_settings(db, settings)
+    tz = dbs.tzinfo
     day_start, day_end = local_day_bounds_utc(target_date, tz)
 
     busy_intervals: list[tuple[datetime, datetime]] = []
     local_day_events: list[dict] = []
 
-    refresh_token = get_setting(db, "google_refresh_token", "")
+    refresh_token = dbs.google_refresh_token
     ttl = _cache_ttl(settings)
     if refresh_token and settings.google_client_id:
         cal = build_calendar_service(settings)
@@ -294,12 +299,12 @@ def compute_inspection_slots(
         windows = trim_windows_for_drive_time(
             windows, target_date, local_day_events,
             destination=destination,
-            home_address=get_setting(db, "home_address", ""),
+            home_address=dbs.home_address,
             db=db,
         )
 
-    min_advance = int(get_setting(db, "min_advance_hours", "24"))
-    now_local = datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
+    min_advance = dbs.min_advance_hours
+    now_local = now if now is not None else datetime.now(dt_timezone.utc).astimezone(tz).replace(tzinfo=None)
     slots = split_into_slots(
         windows, appt_type.duration_minutes,
         appt_type.buffer_before_minutes, appt_type.buffer_after_minutes,
