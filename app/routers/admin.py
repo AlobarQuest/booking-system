@@ -554,6 +554,10 @@ def admin_reschedule_booking(
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
     dbs = load_db_settings(db, get_settings())
+    google_token_invalid = False
+    if dbs.google_refresh_token:
+        cal = build_calendar_service(get_settings())
+        google_token_invalid = cal.verify_refresh_token(dbs.google_refresh_token) is False
     return templates.TemplateResponse("admin/settings.html", {
         "request": request,
         "owner_name": dbs.owner_name,
@@ -565,6 +569,7 @@ def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
         "from_email": dbs.from_email,
         "contact_phone": dbs.contact_phone,
         "google_authorized": bool(dbs.google_refresh_token),
+        "google_token_invalid": google_token_invalid,
         "conflict_cals": dbs.conflict_calendars,
         "email_guest_confirmation": dbs.email_guest_confirmation,
         "email_admin_alert": dbs.email_admin_alert,

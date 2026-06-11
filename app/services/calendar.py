@@ -2,6 +2,8 @@ import httpx
 from datetime import datetime
 from datetime import date as _date_type
 from datetime import timezone as _utc_tz
+from google.auth.exceptions import RefreshError
+from google.auth.transport.requests import Request as GoogleAuthRequest
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
@@ -65,6 +67,30 @@ class CalendarService:
 
     def is_authorized(self, refresh_token: str) -> bool:
         return bool(refresh_token)
+
+    def verify_refresh_token(self, refresh_token: str) -> bool | None:
+        """Check whether Google still accepts the stored refresh token.
+
+        Returns True when a token refresh succeeds, False when Google
+        definitively rejects the grant (revoked/expired/invalid), and None
+        when validity could not be determined (e.g. network failure) so
+        callers do not report a working connection as broken.
+        """
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            scopes=SCOPES,
+        )
+        try:
+            creds.refresh(GoogleAuthRequest())
+        except RefreshError:
+            return False
+        except Exception:
+            return None
+        return True
 
     def _build_service(self, refresh_token: str):
         creds = Credentials(
