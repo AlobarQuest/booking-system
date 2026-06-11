@@ -8,6 +8,15 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.services.cache import availability_cache
+
+
+@pytest.fixture(autouse=True)
+def _isolate_availability_cache():
+    """The availability cache is process-global; keep tests independent."""
+    availability_cache.clear()
+    yield
+    availability_cache.clear()
 
 
 def get_csrf(client, path: str) -> str:

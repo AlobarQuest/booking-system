@@ -9,12 +9,13 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_email_config, get_setting
+from app.dependencies import load_db_settings
 from app.models import Booking
 from app.services import email
+from app.services.cache import availability_cache
 from app.services.calendar import build_calendar_service
 from app.services.drive_time import get_drive_time
-from app.services.timeutils import get_timezone, local_to_utc
+from app.services.timeutils import local_to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,8 @@ def create_drive_time_blocks(
                 except Exception:
                     logger.warning("Drive-time block: after-block creation failed", exc_info=True)
 
+    if created_ids:
+        availability_cache.clear()
     return created_ids
 
 
@@ -118,7 +121,7 @@ def delete_drive_time_events(cal, refresh_token: str, calendar_id: str, event_id
 
 def delete_booking_calendar_events(db: Session, booking: Booking, settings) -> None:
     """Delete a booking's Google event and its drive-time blocks. Non-fatal."""
-    refresh_token = get_setting(db, "google_refresh_token", "")
+    refresh_token = load_db_settings(db, settings).google_refresh_token
     if not (refresh_token and settings.google_client_id):
         return
     cal = build_calendar_service(settings)
@@ -129,6 +132,7 @@ def delete_booking_calendar_events(db: Session, booking: Booking, settings) -> N
         except Exception:
             logger.warning("Cancel: deletion of event %s failed", booking.google_event_id, exc_info=True)
     delete_drive_time_events(cal, refresh_token, calendar_id, booking.drive_time_event_ids)
+    availability_cache.clear()
 
 
 def perform_reschedule(
@@ -150,11 +154,11 @@ def perform_reschedule(
     appt_type = booking.appointment_type
     new_end_dt = new_start_dt + timedelta(minutes=appt_type.duration_minutes)
 
-    tz = get_timezone(db)
-    start_utc = local_to_utc(new_start_dt, tz)
-    end_utc = local_to_utc(new_end_dt, tz)
+    dbs = load_db_settings(db, settings)
+    start_utc = local_to_utc(new_start_dt, dbs.tzinfo)
+    end_utc = local_to_utc(new_end_dt, dbs.tzinfo)
 
-    refresh_token = get_setting(db, "google_refresh_token", "")
+    refresh_token = dbs.google_refresh_token
     old_event_id = booking.google_event_id
     new_event_id = old_event_id  # preserve original if calendar branch is skipped
 
@@ -196,27 +200,26 @@ def perform_reschedule(
     booking.end_datetime = new_end_dt
     booking.google_event_id = new_event_id
     db.commit()
+    availability_cache.clear()
 
     # Send new confirmation email (non-fatal; only if guest email present)
-    if booking.guest_email:
-        email_config = get_email_config(db, settings)
-        if email_config.can_send:
-            try:
-                email.send_guest_confirmation(
-                    api_key=email_config.api_key,
-                    from_email=email_config.from_email,
-                    guest_email=booking.guest_email,
-                    guest_name=booking.guest_name,
-                    appt_type_name=appt_type.guest_event_title or appt_type.name,
-                    start_dt=new_start_dt,
-                    end_dt=new_end_dt,
-                    custom_responses=booking.custom_field_responses,
-                    owner_name=get_setting(db, "owner_name", ""),
-                    template=get_setting(db, "email_guest_confirmation", ""),
-                    reschedule_url=f"{base_url}/reschedule/{booking.reschedule_token}",
-                    cancel_url=f"{base_url}/cancel/{booking.reschedule_token}",
-                    location=appt_type.location or "",
-                    contact_phone=get_setting(db, "contact_phone", ""),
-                )
-            except Exception:
-                logger.warning("Reschedule: confirmation email failed", exc_info=True)
+    if booking.guest_email and dbs.can_send_email:
+        try:
+            email.send_guest_confirmation(
+                api_key=dbs.resend_api_key,
+                from_email=dbs.from_email,
+                guest_email=booking.guest_email,
+                guest_name=booking.guest_name,
+                appt_type_name=appt_type.guest_event_title or appt_type.name,
+                start_dt=new_start_dt,
+                end_dt=new_end_dt,
+                custom_responses=booking.custom_field_responses,
+                owner_name=dbs.owner_name,
+                template=dbs.email_guest_confirmation,
+                reschedule_url=f"{base_url}/reschedule/{booking.reschedule_token}",
+                cancel_url=f"{base_url}/cancel/{booking.reschedule_token}",
+                location=appt_type.location or "",
+                contact_phone=dbs.contact_phone,
+            )
+        except Exception:
+            logger.warning("Reschedule: confirmation email failed", exc_info=True)

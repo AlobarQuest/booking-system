@@ -81,9 +81,9 @@ Admin: OIDC via Authentik (`/login` → callback sets `session["user_sub"]`); `r
 |---|---|---|---|
 | A1 | **Business logic lived in routers and was imported across routers as private functions.** `app.routers.admin` imported `_compute_slots_for_type` from `app.routers.slots` and `_delete_drive_time_events`/`_perform_reschedule` from `app.routers.booking`. Routers were the de-facto domain layer; "private" helpers were public API. | High | **Fixed** — extracted to `services/slots.py` and `services/scheduling.py`; routers are thin HTTP adapters. |
 | A2 | **~25 bare `except Exception: pass` blocks and zero logging in the entire application.** "Non-fatal" is the right *policy* for calendar/email side effects, but with no logs, a dead refresh token or Resend outage is indistinguishable from success. The booking confirms; the owner's calendar silently stops updating. | High | **Fixed** — every swallow site now logs a warning with traceback; failure policy unchanged. |
-| A3 | **Settings split across three stores with per-key queries.** Env vars (`config.py`), DB `Setting` key-value rows, and some keys (`resend_api_key`, `from_email`, `timezone`) in *both* with fallback. A booking request issues ~10 separate `Setting` queries. | Medium | Partially addressed (`get_email_config`, `get_conflict_calendars`, `get_timezone` consolidate the multi-key reads). Roadmap: one `load_settings(db)` read per request. |
-| A4 | **Manual schema migrations** via PRAGMA loops in `init_db()`. Works, but column definitions are duplicated between `models.py` and `database.py`, and there's no down-migration or history. | Medium | Accepted for now (house pattern, documented in CLAUDE.md). Roadmap: Alembic. |
-| A5 | **Test suite mocks router-module internals** (`patch("app.routers.slots.datetime")`, `_build_free_windows`, …) rather than integration boundaries, so any module reorganization breaks tests that still pass functionally. | Medium | Patch targets updated to the new layout; structural coupling remains. Roadmap: fake `CalendarService` fixture + clock injection. |
+| A3 | **Settings split across three stores with per-key queries.** Env vars (`config.py`), DB `Setting` key-value rows, and some keys (`resend_api_key`, `from_email`, `timezone`) in *both* with fallback. A booking request issues ~10 separate `Setting` queries. | Medium | **Fixed** — `load_db_settings(db, env)` loads a typed `DbSettings` snapshot with one query; all hot paths converted. `get_setting`/`set_setting` remain for writes and one-off admin reads. |
+| A4 | **Manual schema migrations** via PRAGMA loops in `init_db()`. Works, but column definitions are duplicated between `models.py` and `database.py`, and there's no down-migration or history. | Medium | **Addressed (transitional)** — Alembic is wired up (`migrations/`, baseline revision `0001`, autogenerate against `Base.metadata`). `init_db()` still runs at startup so existing deploys are untouched; new schema changes go through Alembic (see README). |
+| A5 | **Test suite mocks router-module internals** (`patch("app.routers.slots.datetime")`, `_build_free_windows`, …) rather than integration boundaries, so any module reorganization breaks tests that still pass functionally. | Medium | **Partially fixed** — slot engine accepts an injected `now` (clock seam); direct-call tests converted. HTTP-level tests still patch the module clock; converting them is incremental cleanup. |
 | A6 | Per-router `Jinja2Templates` instances with divergent filter/global registration (admin had `enumerate`, booking had `csrf_token`, slots had neither). | Low | **Fixed** — single shared env in `app/templating.py`. |
 
 ### 3.2 Duplicate logic (found → resolved)
@@ -104,14 +104,14 @@ Admin: OIDC via Authentik (`/login` → callback sets `session["user_sub"]`); `r
 
 | # | Finding | Status |
 |---|---|---|
-| P1 | **Webcal feeds fetched synchronously on every `/slots` request, per feed, with no caching** (10 s timeout each). Google freebusy + events calls likewise sequential. A guest clicking through dates pays the full network cost every click. This is the dominant latency term. | Open (roadmap §5.2) — needs a short-TTL busy-interval cache; left out of this pass because caching changes observable freshness behavior. |
+| P1 | **Webcal feeds fetched synchronously on every `/slots` request, per feed, with no caching** (10 s timeout each). Google freebusy + events calls likewise sequential. A guest clicking through dates pays the full network cost every click. This is the dominant latency term. | **Fixed** (follow-up PR) — `services/cache.py` TTL cache (default 45 s, `SLOTS_CACHE_TTL_SECONDS`, 0 disables) over freebusy/events/webcal lookups, cleared on every booking mutation. |
 | P2 | No indexes on `bookings` despite every hot query filtering on `status` + `start_datetime` (+ `appointment_type_id` for conflict/capacity checks). Full table scans on the booking race-condition guard. | **Fixed** — composite indexes `(status, start_datetime)` and `(appointment_type_id, status, start_datetime)`, created idempotently for existing DBs. |
 | P3 | `bookings_page` does an O(n²) pairwise overlap scan to badge group showings. Bounded today (upcoming + 50 past) — fine at this scale; a sort-and-sweep per type is the fix if listings grow. | Accepted (documented). |
 | P4 | Slot computation loads *all* `BlockedPeriod` rows and all active rules per request rather than date-filtered. Negligible now; trivially filterable later. | Accepted. |
 
 ### 3.4 Scalability risks
 
-- **S1 — SQLite + single process** is the architecture's stated scope (single owner, Coolify volume). The real risk isn't throughput, it's the **booking race**: the `max_concurrent` overlap check and the insert are not atomic. Two simultaneous guests can both pass the count. SQLite's write serialization makes the window tiny, but moving to Postgres/multi-worker without adding a transactional guard (`SELECT … FOR UPDATE` or a unique constraint on `(appointment_type_id, start_datetime)` for `max_concurrent=1` types) would widen it.
+- **S1 — SQLite + single process** is the architecture's stated scope (single owner, Coolify volume). The real risk isn't throughput, it's the **booking race**: the `max_concurrent` overlap check and the insert were not atomic. **Fixed** — `try_create_booking()` serializes the check + insert behind a process-level write lock (sufficient for the single-writer deployment; the code documents the database-level guard required if the deployment ever goes multi-process).
 - **S2 — Blocking I/O in request handlers.** Acceptable under FastAPI's threadpool for sync routes at this traffic; the latency cost (P1) bites before the concurrency cost does.
 - **S3 — Filesystem session/upload coupling**: uploads on a container volume, sessions in signed cookies — both fine single-node, both assumptions to revisit if ever multi-node.
 
@@ -120,7 +120,7 @@ Admin: OIDC via Authentik (`/login` → callback sets `session["user_sub"]`); `r
 - **M1 — Silent failure** (A2): fixed; this was the most dangerous one operationally.
 - **M2 — 950-line admin router** mixing nine concerns. Reduced and de-duplicated in place; splitting into `admin/` sub-routers is the next step if it keeps growing.
 - **M3 — Stringly-typed booleans** from HTML forms (`requires_drive_time == "true"`), JSON-in-TEXT columns with property wrappers (`custom_fields`, `rental_requirements`). Idiomatic enough for the stack; documented so it isn't "fixed" into a behavior change casually.
-- **M4 — README drift**: README still describes "single-password admin authentication" although auth is OIDC since May 2026.
+- **M4 — README drift**: README still described "single-password admin authentication" although auth is OIDC since May 2026. **Fixed** — README updated (auth description + migrations section).
 
 ---
 
@@ -137,9 +137,9 @@ Deliberately **not** done, to honor "do not change functionality": busy-interval
 
 ## 5. Refactoring roadmap (recommended order)
 
-1. **Short-TTL cache for busy intervals + webcal feeds** (P1) — biggest user-visible win; cache per `(calendar_id, date)` for 30–60 s in-process; invalidate on booking creation.
-2. **Transactional booking guard** (S1) — wrap overlap-check + insert in `BEGIN IMMEDIATE` (SQLite) so the race window closes; prerequisite for any move off SQLite.
-3. **Single settings load per request** (A3) — one query, typed accessor object; removes ~10 queries/request and the env/DB fallback ambiguity.
-4. **Test seams** (A5) — inject a clock and a calendar gateway fixture instead of `patch(...datetime)`; makes future moves free.
-5. **Alembic** (A4) — retire the PRAGMA loops; the current pattern is one `ALTER`-typo away from a broken prod boot.
-6. **Split `routers/admin.py`** (M2) into `admin/{appointment_types,availability,bookings,settings,google,inspection}.py` when it next grows.
+1. ~~**Short-TTL cache for busy intervals + webcal feeds** (P1)~~ — done (`services/cache.py`).
+2. ~~**Atomic booking guard** (S1)~~ — done (`try_create_booking()`; lock-serialized check + insert, DB-level guard documented for a future multi-process deployment).
+3. ~~**Single settings load per request** (A3)~~ — done (`load_db_settings()` / `DbSettings`).
+4. ~~**Test seams** (A5)~~ — clock seam added to the slot engine and direct-call tests converted; converting the remaining HTTP-level tests is incremental cleanup as they're touched.
+5. ~~**Alembic** (A4)~~ — scaffolding done (baseline `0001`, autogenerate wired to `Base.metadata`, batch mode for SQLite). `init_db()` deliberately still runs at startup so the transition is zero-risk for production; retire it after the first real Alembic migration ships and existing DBs are stamped.
+6. **Split `routers/admin.py`** (M2) — deliberately not done: its trigger was "when it next grows", and the file *shrank* in the refactor. Revisit when a new admin feature lands.

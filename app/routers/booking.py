@@ -8,11 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.dependencies import get_email_config, get_setting, require_csrf
+from app.dependencies import load_db_settings, require_csrf
 from app.limiter import limiter
 from app.models import AppointmentType, Booking
 from app.services import email
-from app.services.booking import create_booking
+from app.services.booking import try_create_booking
+from app.services.cache import availability_cache
 from app.services.calendar import build_calendar_service
 from app.services.scheduling import (
     create_drive_time_blocks,
@@ -20,7 +21,7 @@ from app.services.scheduling import (
     perform_reschedule,
 )
 from app.services.slots import compute_slots_for_type
-from app.services.timeutils import get_timezone, local_to_utc, now_local
+from app.services.timeutils import local_to_utc, now_local
 from app.templating import templates
 
 logger = logging.getLogger(__name__)
@@ -91,19 +92,18 @@ def reschedule_page(
     if not booking:
         return _token_error(request, RESCHEDULE_TOKEN_ERROR)
 
-    min_advance = int(get_setting(db, "min_advance_hours", "24"))
-    max_future = int(get_setting(db, "max_future_days", "30"))
-    now = now_local(get_timezone(db))
-    cutoff = now + timedelta(hours=min_advance)
+    dbs = load_db_settings(db, get_settings())
+    now = now_local(dbs.tzinfo)
+    cutoff = now + timedelta(hours=dbs.min_advance_hours)
 
     return templates.TemplateResponse("booking/reschedule.html", {
         "request": request,
         "booking": booking,
         "token": token,
         "too_close": booking.start_datetime <= cutoff,
-        "min_advance_hours": min_advance,
+        "min_advance_hours": dbs.min_advance_hours,
         "min_date": cutoff.date().isoformat(),
-        "max_date": (now + timedelta(days=max_future)).date().isoformat(),
+        "max_date": (now + timedelta(days=dbs.max_future_days)).date().isoformat(),
         "current_display": _format_booking_start(booking),
     })
 
@@ -138,19 +138,18 @@ async def submit_reschedule(
     except (ValueError, TypeError):
         return _reschedule_form(error="Invalid date/time. Please try again.")
 
-    min_advance = int(get_setting(db, "min_advance_hours", "24"))
-    max_future = int(get_setting(db, "max_future_days", "30"))
-    now = now_local(get_timezone(db))
-    cutoff = now + timedelta(hours=min_advance)
+    settings = get_settings()
+    dbs = load_db_settings(db, settings)
+    now = now_local(dbs.tzinfo)
+    cutoff = now + timedelta(hours=dbs.min_advance_hours)
     window_context = {
-        "min_advance_hours": min_advance,
+        "min_advance_hours": dbs.min_advance_hours,
         "min_date": cutoff.date().isoformat(),
-        "max_date": (now + timedelta(days=max_future)).date().isoformat(),
+        "max_date": (now + timedelta(days=dbs.max_future_days)).date().isoformat(),
     }
     if new_start_dt <= cutoff:
         return _reschedule_form(too_close=True, **window_context)
 
-    settings = get_settings()
     base_url = str(request.base_url).rstrip('/')
     try:
         perform_reschedule(db, booking, new_start_dt, settings, base_url)
@@ -195,21 +194,21 @@ async def submit_cancel(
 
     appt_type = booking.appointment_type
     settings = get_settings()
+    dbs = load_db_settings(db, settings)
 
     delete_booking_calendar_events(db, booking, settings)
 
     # Send cancellation email (non-fatal)
-    email_config = get_email_config(db, settings)
-    if email_config.can_send and booking.guest_email:
+    if dbs.can_send_email and booking.guest_email:
         try:
             email.send_cancellation_notice(
-                api_key=email_config.api_key,
-                from_email=email_config.from_email,
+                api_key=dbs.resend_api_key,
+                from_email=dbs.from_email,
                 guest_email=booking.guest_email,
                 guest_name=booking.guest_name,
                 appt_type_name=appt_type.guest_event_title or appt_type.name,
                 start_dt=booking.start_datetime,
-                template=get_setting(db, "email_guest_cancellation", ""),
+                template=dbs.email_guest_cancellation,
             )
         except Exception:
             logger.warning("Cancel: cancellation email failed", exc_info=True)
@@ -247,10 +246,9 @@ def booking_page(request: Request, db: Session = Depends(get_db)):
 
 def _booking_page(request: Request, db: Session):
     appointment_types = db.query(AppointmentType).filter_by(active=True, admin_initiated=False).all()
-    min_advance = int(get_setting(db, "min_advance_hours", "24"))
-    max_future = int(get_setting(db, "max_future_days", "30"))
-    min_date = (datetime.utcnow() + timedelta(hours=min_advance)).date().isoformat()
-    max_date = (datetime.utcnow() + timedelta(days=max_future)).date().isoformat()
+    dbs = load_db_settings(db, get_settings())
+    min_date = (datetime.utcnow() + timedelta(hours=dbs.min_advance_hours)).date().isoformat()
+    max_date = (datetime.utcnow() + timedelta(days=dbs.max_future_days)).date().isoformat()
     return templates.TemplateResponse("booking/index.html", {
         "request": request,
         "appointment_types": appointment_types,
@@ -322,23 +320,15 @@ async def submit_booking(
 
     end_dt = start_dt + timedelta(minutes=appt_type.duration_minutes)
 
-    # Check for conflicts — respect max_concurrent for group showings
-    overlap_count = db.query(Booking).filter(
-        Booking.appointment_type_id == type_id,
-        Booking.status == "confirmed",
-        Booking.start_datetime < end_dt,
-        Booking.end_datetime > start_dt,
-    ).count()
-    if overlap_count >= appt_type.max_concurrent:
-        return _error("That time slot was just booked. Please go back and choose another.")
-
     # Extract custom field responses
     custom_responses = {
         field["label"]: str(form_data.get(f"custom_{field['label']}", ""))
         for field in appt_type.custom_fields
     }
 
-    booking = create_booking(
+    # Capacity check + insert are atomic in the service (group showings
+    # respect max_concurrent; the default is 1).
+    booking = try_create_booking(
         db=db,
         appt_type=appt_type,
         start_dt=start_dt,
@@ -349,10 +339,13 @@ async def submit_booking(
         notes=notes,
         custom_responses=custom_responses,
     )
+    if booking is None:
+        return _error("That time slot was just booked. Please go back and choose another.")
 
     # Google Calendar event creation
     settings = get_settings()
-    refresh_token = get_setting(db, "google_refresh_token", "")
+    dbs = load_db_settings(db, settings)
+    refresh_token = dbs.google_refresh_token
     if refresh_token and settings.google_client_id:
         cal = build_calendar_service(settings)
         description_lines = [
@@ -364,9 +357,8 @@ async def submit_booking(
         for k, v in custom_responses.items():
             description_lines.append(f"{k}: {v}")
         # start_dt/end_dt are naive local datetimes; convert to naive UTC for the calendar API
-        tz = get_timezone(db)
-        start_utc = local_to_utc(start_dt, tz)
-        end_utc = local_to_utc(end_dt, tz)
+        start_utc = local_to_utc(start_dt, dbs.tzinfo)
+        end_utc = local_to_utc(end_dt, dbs.tzinfo)
         try:
             event_id = cal.create_event(
                 refresh_token=refresh_token,
@@ -397,7 +389,7 @@ async def submit_booking(
             Booking.end_datetime > booking.start_datetime,
         ).first() is not None
         if appt_type.requires_drive_time and appt_type.location and not is_group_showing:
-            home_address = get_setting(db, "home_address", "")
+            home_address = dbs.home_address
             dt_ids = create_drive_time_blocks(
                 cal=cal,
                 refresh_token=refresh_token,
@@ -413,38 +405,39 @@ async def submit_booking(
                 booking.drive_time_event_ids = dt_ids
                 db.commit()
 
+        # The owner-calendar events created above postdate create_booking's
+        # invalidation; clear again so /slots never serves the pre-event state.
+        availability_cache.clear()
+
     # Email notifications
-    notify_email = get_setting(db, "notify_email", "")
-    owner_name = get_setting(db, "owner_name", "")
     guest_appt_name = appt_type.guest_event_title or appt_type.name
-    email_config = get_email_config(db, settings)
-    if email_config.can_send:
+    if dbs.can_send_email:
         base_url = str(request.base_url).rstrip('/')
         try:
             email.send_guest_confirmation(
-                api_key=email_config.api_key,
-                from_email=email_config.from_email,
+                api_key=dbs.resend_api_key,
+                from_email=dbs.from_email,
                 guest_email=guest_email,
                 guest_name=guest_name,
                 appt_type_name=guest_appt_name,
                 start_dt=start_dt,
                 end_dt=end_dt,
                 custom_responses=custom_responses,
-                owner_name=owner_name,
-                template=get_setting(db, "email_guest_confirmation", ""),
+                owner_name=dbs.owner_name,
+                template=dbs.email_guest_confirmation,
                 reschedule_url=f"{base_url}/reschedule/{booking.reschedule_token}",
                 cancel_url=f"{base_url}/cancel/{booking.reschedule_token}",
                 location=appt_type.location or "",
-                contact_phone=get_setting(db, "contact_phone", ""),
+                contact_phone=dbs.contact_phone,
             )
         except Exception:
             logger.warning("Booking %s: guest confirmation email failed", booking.id, exc_info=True)
-        if notify_email:
+        if dbs.notify_email:
             try:
                 email.send_admin_alert(
-                    api_key=email_config.api_key,
-                    from_email=email_config.from_email,
-                    notify_email=notify_email,
+                    api_key=dbs.resend_api_key,
+                    from_email=dbs.from_email,
+                    notify_email=dbs.notify_email,
                     guest_name=guest_name,
                     guest_email=guest_email,
                     guest_phone=guest_phone,
@@ -452,7 +445,7 @@ async def submit_booking(
                     start_dt=start_dt,
                     notes=notes,
                     custom_responses=custom_responses,
-                    template=get_setting(db, "email_admin_alert", ""),
+                    template=dbs.email_admin_alert,
                     location=appt_type.location or "",
                 )
             except Exception:
@@ -462,5 +455,5 @@ async def submit_booking(
         "request": request,
         "booking": booking,
         "start_display": start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p"),
-        "contact_phone": get_setting(db, "contact_phone", ""),
+        "contact_phone": dbs.contact_phone,
     })

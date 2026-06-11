@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     from_email: str = "noreply@example.com"
     timezone: str = "America/New_York"
     upload_dir: str = "/data/uploads"
+    # TTL for cached Google freebusy / events / webcal lookups on the
+    # /slots endpoints. 0 disables caching.
+    slots_cache_ttl_seconds: int = 45
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

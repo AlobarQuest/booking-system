@@ -14,8 +14,8 @@ from app.config import get_settings
 from app.database import get_db
 from app.dependencies import (
     get_conflict_calendars,
-    get_email_config,
     get_setting,
+    load_db_settings,
     require_admin,
     require_csrf,
     set_conflict_calendars,
@@ -24,6 +24,7 @@ from app.dependencies import (
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
 from app.services import email
 from app.services.booking import cancel_booking, create_booking
+from app.services.cache import availability_cache
 from app.services.calendar import build_calendar_service
 from app.services.scheduling import (
     create_drive_time_blocks,
@@ -31,7 +32,7 @@ from app.services.scheduling import (
     perform_reschedule,
 )
 from app.services.slots import compute_inspection_slots, compute_slots_for_type
-from app.services.timeutils import get_timezone, local_to_utc
+from app.services.timeutils import local_to_utc
 from app.templating import templates
 
 logger = logging.getLogger(__name__)
@@ -456,19 +457,19 @@ def cancel_booking_route(
         return RedirectResponse("/admin/bookings", status_code=302)
 
     settings = get_settings()
+    dbs = load_db_settings(db, settings)
     delete_booking_calendar_events(db, booking, settings)
 
-    email_config = get_email_config(db, settings)
-    if email_config.can_send:
+    if dbs.can_send_email:
         try:
             email.send_cancellation_notice(
-                api_key=email_config.api_key,
-                from_email=email_config.from_email,
+                api_key=dbs.resend_api_key,
+                from_email=dbs.from_email,
                 guest_email=booking.guest_email,
                 guest_name=booking.guest_name,
                 appt_type_name=booking.appointment_type.name,
                 start_dt=booking.start_datetime,
-                template=get_setting(db, "email_guest_cancellation", ""),
+                template=dbs.email_guest_cancellation,
             )
         except Exception:
             logger.warning("Admin cancel: cancellation email failed", exc_info=True)
@@ -511,7 +512,7 @@ def admin_reschedule_page(
     if not booking:
         _flash(request, "Booking not found.", "error")
         return RedirectResponse("/admin/bookings", status_code=302)
-    max_future = int(get_setting(db, "max_future_days", "30"))
+    max_future = load_db_settings(db, get_settings()).max_future_days
     now = datetime.utcnow()
     return templates.TemplateResponse("admin/admin_reschedule.html", {
         "request": request,
@@ -552,23 +553,22 @@ def admin_reschedule_booking(
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db), _=AuthDep):
-    settings = get_settings()
-    refresh_token = get_setting(db, "google_refresh_token", "")
+    dbs = load_db_settings(db, get_settings())
     return templates.TemplateResponse("admin/settings.html", {
         "request": request,
-        "owner_name": get_setting(db, "owner_name", ""),
-        "notify_email": get_setting(db, "notify_email", ""),
-        "notifications_enabled": get_setting(db, "notifications_enabled", "true") == "true",
-        "timezone": get_setting(db, "timezone", "America/New_York"),
-        "home_address": get_setting(db, "home_address", ""),
-        "resend_api_key_set": bool(get_setting(db, "resend_api_key", settings.resend_api_key)),
-        "from_email": get_setting(db, "from_email", settings.from_email),
-        "contact_phone": get_setting(db, "contact_phone", ""),
-        "google_authorized": bool(refresh_token),
-        "conflict_cals": get_conflict_calendars(db),
-        "email_guest_confirmation": get_setting(db, "email_guest_confirmation", ""),
-        "email_admin_alert": get_setting(db, "email_admin_alert", ""),
-        "email_guest_cancellation": get_setting(db, "email_guest_cancellation", ""),
+        "owner_name": dbs.owner_name,
+        "notify_email": dbs.notify_email,
+        "notifications_enabled": dbs.notifications_enabled,
+        "timezone": dbs.timezone_name,
+        "home_address": dbs.home_address,
+        "resend_api_key_set": bool(dbs.resend_api_key),
+        "from_email": dbs.from_email,
+        "contact_phone": dbs.contact_phone,
+        "google_authorized": bool(dbs.google_refresh_token),
+        "conflict_cals": dbs.conflict_calendars,
+        "email_guest_confirmation": dbs.email_guest_confirmation,
+        "email_admin_alert": dbs.email_admin_alert,
+        "email_guest_cancellation": dbs.email_guest_cancellation,
         "flash": _get_flash(request),
     })
 
@@ -776,12 +776,12 @@ async def submit_inspection(
     )
 
     settings = get_settings()
-    refresh_token = get_setting(db, "google_refresh_token", "")
+    dbs = load_db_settings(db, settings)
+    refresh_token = dbs.google_refresh_token
     if refresh_token and settings.google_client_id:
         cal = build_calendar_service(settings)
-        tz = get_timezone(db)
-        start_utc = local_to_utc(start_dt, tz)
-        end_utc = local_to_utc(end_dt, tz)
+        start_utc = local_to_utc(start_dt, dbs.tzinfo)
+        end_utc = local_to_utc(end_dt, dbs.tzinfo)
 
         description_lines = [f"Inspection at: {destination}"]
         if guest_name:
@@ -819,9 +819,12 @@ async def submit_inspection(
             appt_location=destination,
             start_utc=start_utc,
             end_utc=end_utc,
-            home_address=get_setting(db, "home_address", ""),
+            home_address=dbs.home_address,
             db=db,
         )
+        # The owner-calendar events created above postdate create_booking's
+        # invalidation; clear again so /slots never serves the pre-event state.
+        availability_cache.clear()
 
     start_display = start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
     _flash(request, f"Inspection booked for {start_display} at {destination}.")
