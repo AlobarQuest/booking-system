@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models import AppointmentType, Booking
+from app.services.cache import availability_cache
 
 
 def create_booking(
@@ -34,6 +35,7 @@ def create_booking(
     db.add(booking)
     db.commit()
     db.refresh(booking)
+    availability_cache.clear()
     return booking
 
 
@@ -43,4 +45,5 @@ def cancel_booking(db: Session, booking_id: int) -> Booking | None:
         booking.status = "cancelled"
         db.commit()
         db.refresh(booking)
+        availability_cache.clear()
     return booking

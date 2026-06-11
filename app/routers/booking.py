@@ -13,6 +13,7 @@ from app.limiter import limiter
 from app.models import AppointmentType, Booking
 from app.services import email
 from app.services.booking import create_booking
+from app.services.cache import availability_cache
 from app.services.calendar import build_calendar_service
 from app.services.scheduling import (
     create_drive_time_blocks,
@@ -412,6 +413,10 @@ async def submit_booking(
             if dt_ids:
                 booking.drive_time_event_ids = dt_ids
                 db.commit()
+
+        # The owner-calendar events created above postdate create_booking's
+        # invalidation; clear again so /slots never serves the pre-event state.
+        availability_cache.clear()
 
     # Email notifications
     notify_email = get_setting(db, "notify_email", "")

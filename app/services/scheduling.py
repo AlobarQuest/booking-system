@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_email_config, get_setting
 from app.models import Booking
 from app.services import email
+from app.services.cache import availability_cache
 from app.services.calendar import build_calendar_service
 from app.services.drive_time import get_drive_time
 from app.services.timeutils import get_timezone, local_to_utc
@@ -104,6 +105,8 @@ def create_drive_time_blocks(
                 except Exception:
                     logger.warning("Drive-time block: after-block creation failed", exc_info=True)
 
+    if created_ids:
+        availability_cache.clear()
     return created_ids
 
 
@@ -129,6 +132,7 @@ def delete_booking_calendar_events(db: Session, booking: Booking, settings) -> N
         except Exception:
             logger.warning("Cancel: deletion of event %s failed", booking.google_event_id, exc_info=True)
     delete_drive_time_events(cal, refresh_token, calendar_id, booking.drive_time_event_ids)
+    availability_cache.clear()
 
 
 def perform_reschedule(
@@ -196,6 +200,7 @@ def perform_reschedule(
     booking.end_datetime = new_end_dt
     booking.google_event_id = new_event_id
     db.commit()
+    availability_cache.clear()
 
     # Send new confirmation email (non-fatal; only if guest email present)
     if booking.guest_email:

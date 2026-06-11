@@ -104,7 +104,7 @@ Admin: OIDC via Authentik (`/login` → callback sets `session["user_sub"]`); `r
 
 | # | Finding | Status |
 |---|---|---|
-| P1 | **Webcal feeds fetched synchronously on every `/slots` request, per feed, with no caching** (10 s timeout each). Google freebusy + events calls likewise sequential. A guest clicking through dates pays the full network cost every click. This is the dominant latency term. | Open (roadmap §5.2) — needs a short-TTL busy-interval cache; left out of this pass because caching changes observable freshness behavior. |
+| P1 | **Webcal feeds fetched synchronously on every `/slots` request, per feed, with no caching** (10 s timeout each). Google freebusy + events calls likewise sequential. A guest clicking through dates pays the full network cost every click. This is the dominant latency term. | **Fixed** (follow-up PR) — `services/cache.py` TTL cache (default 45 s, `SLOTS_CACHE_TTL_SECONDS`, 0 disables) over freebusy/events/webcal lookups, cleared on every booking mutation. |
 | P2 | No indexes on `bookings` despite every hot query filtering on `status` + `start_datetime` (+ `appointment_type_id` for conflict/capacity checks). Full table scans on the booking race-condition guard. | **Fixed** — composite indexes `(status, start_datetime)` and `(appointment_type_id, status, start_datetime)`, created idempotently for existing DBs. |
 | P3 | `bookings_page` does an O(n²) pairwise overlap scan to badge group showings. Bounded today (upcoming + 50 past) — fine at this scale; a sort-and-sweep per type is the fix if listings grow. | Accepted (documented). |
 | P4 | Slot computation loads *all* `BlockedPeriod` rows and all active rules per request rather than date-filtered. Negligible now; trivially filterable later. | Accepted. |
@@ -137,7 +137,7 @@ Deliberately **not** done, to honor "do not change functionality": busy-interval
 
 ## 5. Refactoring roadmap (recommended order)
 
-1. **Short-TTL cache for busy intervals + webcal feeds** (P1) — biggest user-visible win; cache per `(calendar_id, date)` for 30–60 s in-process; invalidate on booking creation.
+1. ~~**Short-TTL cache for busy intervals + webcal feeds** (P1)~~ — done in the follow-up PR (`services/cache.py`).
 2. **Transactional booking guard** (S1) — wrap overlap-check + insert in `BEGIN IMMEDIATE` (SQLite) so the race window closes; prerequisite for any move off SQLite.
 3. **Single settings load per request** (A3) — one query, typed accessor object; removes ~10 queries/request and the env/DB fallback ambiguity.
 4. **Test seams** (A5) — inject a clock and a calendar gateway fixture instead of `patch(...datetime)`; makes future moves free.

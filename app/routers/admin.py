@@ -24,6 +24,7 @@ from app.dependencies import (
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
 from app.services import email
 from app.services.booking import cancel_booking, create_booking
+from app.services.cache import availability_cache
 from app.services.calendar import build_calendar_service
 from app.services.scheduling import (
     create_drive_time_blocks,
@@ -822,6 +823,9 @@ async def submit_inspection(
             home_address=get_setting(db, "home_address", ""),
             db=db,
         )
+        # The owner-calendar events created above postdate create_booking's
+        # invalidation; clear again so /slots never serves the pre-event state.
+        availability_cache.clear()
 
     start_display = start_dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
     _flash(request, f"Inspection booked for {start_display} at {destination}.")

@@ -25,10 +25,19 @@ from app.services.availability import (
     split_into_slots,
     trim_windows_for_drive_time,
 )
+from app.services.cache import availability_cache
 from app.services.calendar import build_calendar_service, fetch_webcal_events
 from app.services.timeutils import get_timezone, local_day_bounds_utc, utc_to_local
 
 logger = logging.getLogger(__name__)
+
+
+def _cache_ttl(settings) -> int:
+    """Cache TTL in seconds; 0 (bypass) when unset or not a number."""
+    try:
+        return int(settings.slots_cache_ttl_seconds)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _format_slots(slots: list[time_type]) -> list[dict]:
@@ -110,6 +119,7 @@ def compute_slots_for_type(
     )
 
     google_ids_for_freebusy = {appt_type.calendar_id, *extra_google_ids}
+    ttl = _cache_ttl(settings)
 
     if refresh_token and settings.google_client_id:
         cal = build_calendar_service(settings)
@@ -118,12 +128,16 @@ def compute_slots_for_type(
             window_cal_id = appt_type.calendar_window_calendar_id or appt_type.calendar_id
             google_ids_for_freebusy.discard(window_cal_id)
             try:
-                window_cal_events = cal.get_events_for_day(
-                    refresh_token,
-                    window_cal_id,
-                    day_start,
-                    day_end,
-                    include_all_day=True,
+                window_cal_events = availability_cache.get_or_fetch(
+                    ("events", refresh_token, window_cal_id, day_start, day_end, True),
+                    lambda: cal.get_events_for_day(
+                        refresh_token,
+                        window_cal_id,
+                        day_start,
+                        day_end,
+                        include_all_day=True,
+                    ),
+                    ttl,
                 )
                 title_lower = appt_type.calendar_window_title.lower().strip()
                 for ev in window_cal_events:
@@ -139,8 +153,13 @@ def compute_slots_for_type(
                 logger.warning("Calendar-window event fetch failed for calendar %s", window_cal_id, exc_info=True)
 
         if google_ids_for_freebusy:
+            freebusy_ids = sorted(google_ids_for_freebusy)
             try:
-                utc_busy = cal.get_busy_intervals(refresh_token, list(google_ids_for_freebusy), day_start, day_end)
+                utc_busy = availability_cache.get_or_fetch(
+                    ("freebusy", refresh_token, tuple(freebusy_ids), day_start, day_end),
+                    lambda: cal.get_busy_intervals(refresh_token, freebusy_ids, day_start, day_end),
+                    ttl,
+                )
                 busy_intervals.extend(
                     (utc_to_local(utc_start, tz), utc_to_local(utc_end, tz))
                     for utc_start, utc_end in utc_busy
@@ -150,14 +169,23 @@ def compute_slots_for_type(
 
         if appt_type.requires_drive_time and effective_location:
             try:
-                day_events_utc = cal.get_events_for_day(refresh_token, "primary", day_start, day_end)
+                day_events_utc = availability_cache.get_or_fetch(
+                    ("events", refresh_token, "primary", day_start, day_end, False),
+                    lambda: cal.get_events_for_day(refresh_token, "primary", day_start, day_end),
+                    ttl,
+                )
                 local_day_events.extend(_localize_event(ev, tz) for ev in day_events_utc)
             except Exception:
                 logger.warning("Drive-time day-event fetch failed", exc_info=True)
 
     for webcal_url in webcal_urls:
         try:
-            for ev in fetch_webcal_events(webcal_url, day_start, day_end):
+            webcal_events = availability_cache.get_or_fetch(
+                ("webcal", webcal_url, day_start, day_end),
+                lambda url=webcal_url: fetch_webcal_events(url, day_start, day_end),
+                ttl,
+            )
+            for ev in webcal_events:
                 local_ev = _localize_event(ev, tz)
                 busy_intervals.append((local_ev["start"], local_ev["end"]))
                 if appt_type.requires_drive_time and effective_location and ev["location"]:
@@ -231,10 +259,15 @@ def compute_inspection_slots(
     local_day_events: list[dict] = []
 
     refresh_token = get_setting(db, "google_refresh_token", "")
+    ttl = _cache_ttl(settings)
     if refresh_token and settings.google_client_id:
         cal = build_calendar_service(settings)
         try:
-            utc_busy = cal.get_busy_intervals(refresh_token, [appt_type.calendar_id], day_start, day_end)
+            utc_busy = availability_cache.get_or_fetch(
+                ("freebusy", refresh_token, (appt_type.calendar_id,), day_start, day_end),
+                lambda: cal.get_busy_intervals(refresh_token, [appt_type.calendar_id], day_start, day_end),
+                ttl,
+            )
             busy_intervals.extend(
                 (utc_to_local(utc_start, tz), utc_to_local(utc_end, tz))
                 for utc_start, utc_end in utc_busy
@@ -244,7 +277,11 @@ def compute_inspection_slots(
 
         if destination:
             try:
-                day_events_utc = cal.get_events_for_day(refresh_token, "primary", day_start, day_end)
+                day_events_utc = availability_cache.get_or_fetch(
+                    ("events", refresh_token, "primary", day_start, day_end, False),
+                    lambda: cal.get_events_for_day(refresh_token, "primary", day_start, day_end),
+                    ttl,
+                )
                 local_day_events.extend(_localize_event(ev, tz) for ev in day_events_utc)
             except Exception:
                 logger.warning("Drive-time day-event fetch failed", exc_info=True)
