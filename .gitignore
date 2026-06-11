@@ -9,3 +9,7 @@ __pycache__/
 dist/
 build/
 .worktrees/
+
+# Tool-generated artifacts
+.claude-octopus/
+.playwright-mcp/
