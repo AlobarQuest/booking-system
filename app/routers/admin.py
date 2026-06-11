@@ -681,6 +681,7 @@ def google_callback(
     try:
         refresh_token = cal.exchange_code(code, code_verifier=code_verifier)
         set_setting(db, "google_refresh_token", refresh_token)
+        set_setting(db, "google_token_alert_sent", "")  # re-arm the dead-token ops alert
         _flash(request, "Google Calendar connected successfully.")
     except Exception as e:
         logger.warning("Google OAuth code exchange failed", exc_info=True)

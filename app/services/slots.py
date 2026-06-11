@@ -13,11 +13,13 @@ import logging
 from datetime import date, datetime, time as time_type, timedelta, timezone as dt_timezone
 from urllib.parse import urlparse
 
+from google.auth.exceptions import RefreshError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.dependencies import load_db_settings
+from app.dependencies import get_setting, load_db_settings, set_setting
 from app.models import AppointmentType, AvailabilityRule, BlockedPeriod, Booking
+from app.services import email
 from app.services.availability import (
     _build_free_windows,
     filter_by_advance_notice,
@@ -30,6 +32,43 @@ from app.services.calendar import build_calendar_service, fetch_webcal_events
 from app.services.timeutils import local_day_bounds_utc, utc_to_local
 
 logger = logging.getLogger(__name__)
+
+GOOGLE_TOKEN_ALERT_FLAG = "google_token_alert_sent"
+
+
+def _admin_settings_url(settings) -> str:
+    parsed = urlparse(settings.google_redirect_uri)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}/admin/settings"
+    return "/admin/settings"
+
+
+def _alert_if_token_dead(exc: Exception, db: Session, dbs) -> None:
+    """Email the owner when Google definitively rejects the refresh token.
+
+    A dead token does not break booking — slots are served without conflict
+    checking, which the owner cannot otherwise see. Edge-triggered: one email
+    per failure episode (flag re-armed on Google reconnect). The flag is only
+    set after a successful send so a failed/unconfigured email retries later.
+    """
+    if not isinstance(exc, RefreshError):
+        return
+    if get_setting(db, GOOGLE_TOKEN_ALERT_FLAG, ""):
+        return
+    if not (dbs.resend_api_key and dbs.notify_email):
+        logger.warning("Google refresh token rejected but no alert email configured")
+        return
+    try:
+        email.send_google_token_alert(
+            api_key=dbs.resend_api_key,
+            from_email=dbs.from_email,
+            notify_email=dbs.notify_email,
+            settings_url=_admin_settings_url(get_settings()),
+        )
+    except Exception:
+        logger.warning("Failed to send Google token alert email", exc_info=True)
+        return
+    set_setting(db, GOOGLE_TOKEN_ALERT_FLAG, datetime.utcnow().isoformat())
 
 
 def _cache_ttl(settings) -> int:
@@ -152,8 +191,9 @@ def compute_slots_for_type(
                         window_intervals.append((window_start, window_end))
                     else:
                         busy_intervals.append((local_start, local_end))
-            except Exception:
+            except Exception as exc:
                 logger.warning("Calendar-window event fetch failed for calendar %s", window_cal_id, exc_info=True)
+                _alert_if_token_dead(exc, db, dbs)
 
         if google_ids_for_freebusy:
             freebusy_ids = sorted(google_ids_for_freebusy)
@@ -167,8 +207,9 @@ def compute_slots_for_type(
                     (utc_to_local(utc_start, tz), utc_to_local(utc_end, tz))
                     for utc_start, utc_end in utc_busy
                 )
-            except Exception:
+            except Exception as exc:
                 logger.warning("Google freebusy query failed", exc_info=True)
+                _alert_if_token_dead(exc, db, dbs)
 
         if appt_type.requires_drive_time and effective_location:
             try:
@@ -178,8 +219,9 @@ def compute_slots_for_type(
                     ttl,
                 )
                 local_day_events.extend(_localize_event(ev, tz) for ev in day_events_utc)
-            except Exception:
+            except Exception as exc:
                 logger.warning("Drive-time day-event fetch failed", exc_info=True)
+                _alert_if_token_dead(exc, db, dbs)
 
     for webcal_url in webcal_urls:
         try:
@@ -277,8 +319,9 @@ def compute_inspection_slots(
                 (utc_to_local(utc_start, tz), utc_to_local(utc_end, tz))
                 for utc_start, utc_end in utc_busy
             )
-        except Exception:
+        except Exception as exc:
             logger.warning("Google freebusy query failed", exc_info=True)
+            _alert_if_token_dead(exc, db, dbs)
 
         if destination:
             try:
@@ -288,8 +331,9 @@ def compute_inspection_slots(
                     ttl,
                 )
                 local_day_events.extend(_localize_event(ev, tz) for ev in day_events_utc)
-            except Exception:
+            except Exception as exc:
                 logger.warning("Drive-time day-event fetch failed", exc_info=True)
+                _alert_if_token_dead(exc, db, dbs)
 
     rules = db.query(AvailabilityRule).filter_by(active=True).all()
     blocked = db.query(BlockedPeriod).all()

@@ -74,7 +74,7 @@ def test_google_callback_passes_stored_code_verifier_to_exchange():
         "auth-code",
         code_verifier="verifier-123",
     )
-    mock_set_setting.assert_called_once_with(db, "google_refresh_token", "refresh-token")
+    mock_set_setting.assert_any_call(db, "google_refresh_token", "refresh-token")
     assert "oauth_state" not in request.session
     assert "oauth_code_verifier" not in request.session
     assert response.status_code == 302

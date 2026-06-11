@@ -121,6 +121,14 @@ Google requires an exact host/path match for OAuth redirect URIs. `https://previ
 - **Mobile booking UI** — responsive card layout: photo stacks above text on mobile (`flex-direction: column-reverse`); reduced header padding; full-width date picker on mobile
 - **Drive time block events** — when a booking is confirmed for an appointment type with `requires_drive_time=True`, creates "BLOCK - Drive Time for …" calendar events on the owner's calendar: one before the appointment (from preceding event location or `home_address` setting) and one after (to the next event's location), each within a ±1-hour window; implemented in `_create_drive_time_blocks()` in `app/routers/booking.py`
 - **Google Calendar reliability fixes (March 12, 2026)** — reconnect now persists the OAuth PKCE code verifier across `/admin/google/authorize` → `/admin/google/callback`; calendar-window mode now fails closed when enabled but no matching events exist, supports matching all-day events, and normalizes offset-aware `events.list()` timestamps to UTC before local conversion so local booking windows do not shift earlier or later
+- **Dead Google token detection (June 11, 2026)** — admin settings page verifies the refresh token with a real Google token-refresh call (`CalendarService.verify_refresh_token()`), showing "Connection broken — re-authorize" on definitive rejection (transient network errors never flip the status); the slot engine emails the owner once per failure episode when Google rejects the token (`_alert_if_token_dead()` in `app/services/slots.py`, flag `google_token_alert_sent` in settings, re-armed on reconnect)
+
+---
+
+## Known Non-obvious Invariants
+
+**A dead Google refresh token does not break booking — it silently disables conflict checking.**
+`/slots` fails open on Google freebusy errors (logged, but slots are still served), so guests can book over busy calendar times. Two guardrails exist: the admin settings page does a live token check on load, and the slot engine sends a one-time ops alert email when Google definitively rejects the token. Calendar-window mode is the exception — it fails closed (no matching events → no slots).
 
 ---
 

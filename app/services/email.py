@@ -77,6 +77,22 @@ _CANCELLATION_DEFAULT = """\
 <p>Your <strong>{appt_type}</strong> on {date_time} has been cancelled.</p>
 <p>Please reach out to reschedule.</p>"""
 
+# Ops alert — not admin-editable like the templates above.
+_GOOGLE_TOKEN_ALERT = """\
+<h2 style="color:#dc2626;">Google Calendar connection is broken</h2>
+<p>Google rejected the saved Calendar credentials (the refresh token was revoked or expired).</p>
+<p><strong>Until you re-authorize, booking slots are offered without checking your
+calendar for conflicts</strong>, and new bookings will not create calendar events.</p>
+<p><a href="{settings_url}">Open admin settings to re-authorize Google Calendar</a></p>"""
+
+
+def send_google_token_alert(api_key: str, from_email: str, notify_email: str, settings_url: str):
+    _send(
+        api_key, from_email, notify_email,
+        subject="Action needed: Google Calendar disconnected — bookings are not conflict-checked",
+        html=_GOOGLE_TOKEN_ALERT.format(settings_url=settings_url),
+    )
+
 
 def send_guest_confirmation(
     api_key: str,
