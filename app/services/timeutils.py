@@ -8,17 +8,6 @@ place where conversion between the two frames happens.
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy.orm import Session
-
-from app.dependencies import get_setting
-
-DEFAULT_TIMEZONE = "America/New_York"
-
-
-def get_timezone(db: Session) -> ZoneInfo:
-    """Return the owner's configured timezone (Settings table, with default)."""
-    return ZoneInfo(get_setting(db, "timezone", DEFAULT_TIMEZONE))
-
 
 def utc_to_local(dt: datetime, tz: ZoneInfo) -> datetime:
     """Convert a naive UTC datetime to a naive local datetime."""
