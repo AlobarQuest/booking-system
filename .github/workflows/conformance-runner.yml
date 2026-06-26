@@ -1,0 +1,76 @@
+name: Conformance Runner (brief → PR)
+
+# Sandboxed "brief → PR" runner for the app-conformance handoff system (Phase 2).
+# Fired manually or via the GitHub API (workflow_dispatch). Claude makes ONLY the
+# mechanical change the brief specifies, in a tool-scoped ephemeral container, and the
+# workflow opens a PR against the target branch for a human to review and merge.
+#
+# It NEVER merges and NEVER deploys — it always ends at a PR. The ephemeral runner +
+# the repo-scoped Claude GitHub App + the --allowedTools list are the security boundary:
+# Claude can edit this repo's files and nothing else (no infra, no secrets beyond what's
+# injected here, no external network via WebFetch/WebSearch).
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "The handoff brief — exactly what to change and how to verify it"
+        required: true
+        type: string
+      base_branch:
+        description: "Branch the fix targets / PR base (e.g. master, preview)"
+        required: true
+        default: "master"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  conformance-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_branch }}
+          fetch-depth: 0
+
+      - name: Claude makes the change (tool-scoped; edits only, no commit/push)
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: "--allowedTools Read,Edit,Bash,Glob --max-turns 12"
+          prompt: |
+            ${{ inputs.task }}
+
+            STRICT RULES for this run (non-negotiable):
+            - Make ONLY the change described above. Keep all existing behavior working.
+            - Do NOT git commit, git push, create a branch, or open a PR. Leave your edits
+              UNCOMMITTED in the working tree — the workflow opens the PR for you.
+            - Do NOT touch secrets, .env files, CI/workflow config, or anything outside the change.
+            - If the change is larger, trickier, or less certain than the brief implies, STOP
+              and explain what you found instead of guessing.
+
+      - name: Open PR against the target branch
+        uses: peter-evans/create-pull-request@v7
+        with:
+          base: ${{ inputs.base_branch }}
+          branch: conformance/run-${{ github.run_id }}
+          delete-branch: true
+          title: "conformance: automated app-conformance fix"
+          commit-message: "conformance: automated fix via brief→PR runner"
+          body: |
+            Automated by the conformance runner (Phase 2). **Review and merge on your own timing — this never auto-merges and never deploys.**
+
+            **Brief given to the agent:**
+
+            ```
+            ${{ inputs.task }}
+            ```
+
+            ---
+            ⚠️ **Landmine glance:** scan the diff for anything irreversible — migrations, deletions,
+            CI/secret changes, infra touches. For a mechanical route/flag change the risk surface
+            should be ~nil. The repo's normal CI runs the tests on this PR.
