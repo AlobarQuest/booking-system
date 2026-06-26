@@ -60,6 +60,11 @@ jobs:
           base: ${{ inputs.base_branch }}
           branch: conformance/run-${{ github.run_id }}
           delete-branch: true
+          # Route the bot-authored PR TO the human: request review + assign, so it surfaces in
+          # the GitHub app's "Review requested" / "Assigned" filters (a bot PR otherwise mentions
+          # nobody and is invisible there). Override via inputs later when generalizing per-repo.
+          reviewers: AlobarQuest
+          assignees: AlobarQuest
           title: "conformance: automated app-conformance fix"
           commit-message: "conformance: automated fix via brief→PR runner"
           body: |
