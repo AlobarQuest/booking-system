@@ -4,6 +4,12 @@ def test_health_check(client):
     assert response.json() == {"status": "ok"}
 
 
+def test_api_health_check(client):
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_security_headers_present(client):
     resp = client.get("/health")
     assert resp.headers.get("x-frame-options") == "DENY"
