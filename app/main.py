@@ -53,5 +53,6 @@ async def admin_not_authenticated_handler(request, exc):
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check():
     return {"status": "ok"}
